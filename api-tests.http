@@ -1,0 +1,202 @@
+### Smart Dictophone API Tests
+### Base URL
+@baseUrl = http://localhost:8080
+@contentType = application/json
+
+### 1. Health Check
+GET {{baseUrl}}/health
+
+### 2. Register New User
+POST {{baseUrl}}/register
+Content-Type: {{contentType}}
+
+{
+  "email": "test@example.com",
+  "password": "test123456",
+  "fullname": "Test User"
+}
+
+> {%
+    client.test("Register successful", function() {
+        client.assert(response.status === 201, "Response status is not 201");
+        client.global.set("accessToken", response.body.accessToken);
+        client.global.set("userId", response.body.id);
+    });
+%}
+
+### 3. Login
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "test@example.com",
+  "password": "test123456"
+}
+
+> {%
+    client.test("Login successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.global.set("accessToken", response.body.accessToken);
+        client.global.set("refreshToken", response.body.refreshToken);
+    });
+%}
+
+### 4. Get User Info (requires auth)
+GET {{baseUrl}}/recordInfo
+Authorization: Bearer {{accessToken}}
+
+### 5. Login On Token (refresh)
+POST {{baseUrl}}/loginOnToken
+Authorization: Bearer {{refreshToken}}
+
+> {%
+    client.test("Token refresh successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.global.set("accessToken", response.body.accessToken);
+    });
+%}
+
+### 6. Create Folder
+POST {{baseUrl}}/folders
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "Work Meetings",
+  "description": "All work-related recordings"
+}
+
+> {%
+    client.test("Folder created", function() {
+        client.assert(response.status === 201, "Response status is not 201");
+        client.global.set("folderId", response.body.id);
+    });
+%}
+
+### 7. Get All Folders
+GET {{baseUrl}}/folders
+Authorization: Bearer {{accessToken}}
+
+### 8. Update Folder
+PUT {{baseUrl}}/folders/{{folderId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "Updated Work Meetings",
+  "description": "Updated description"
+}
+
+### 9. Create Record (multipart - use with actual file)
+# POST {{baseUrl}}/records
+# Authorization: Bearer {{accessToken}}
+# Content-Type: multipart/form-data; boundary=WebAppBoundary
+#
+# --WebAppBoundary
+# Content-Disposition: form-data; name="datetime"
+#
+# 2025-10-09T14:30:00
+# --WebAppBoundary
+# Content-Disposition: form-data; name="name"
+#
+# Test Meeting Recording
+# --WebAppBoundary
+# Content-Disposition: form-data; name="category"
+#
+# Work
+# --WebAppBoundary
+# Content-Disposition: form-data; name="folderId"
+#
+# {{folderId}}
+# --WebAppBoundary
+# Content-Disposition: form-data; name="recordFile"; filename="test.m4a"
+# Content-Type: audio/m4a
+#
+# < ./test.m4a
+# --WebAppBoundary--
+
+### 10. Get Records (with pagination)
+GET {{baseUrl}}/records?page=0&size=20
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Records retrieved", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        if (response.body.content.length > 0) {
+            client.global.set("recordId", response.body.content[0].id);
+        }
+    });
+%}
+
+### 11. Search Records
+GET {{baseUrl}}/records?search=meeting&page=0&size=10
+Authorization: Bearer {{accessToken}}
+
+### 12. Filter Records by Folder
+GET {{baseUrl}}/records?folderId={{folderId}}&page=0&size=10
+Authorization: Bearer {{accessToken}}
+
+### 13. Transcribe Record (API Key protected)
+POST {{baseUrl}}/records/{{recordId}}/transcribe
+X-API-Key: your-api-key-for-transcription-service
+Content-Type: {{contentType}}
+
+{
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 5.2,
+      "text": "Hello, this is a test transcription."
+    },
+    {
+      "start": 5.2,
+      "end": 10.8,
+      "text": "We are testing the transcription endpoint."
+    },
+    {
+      "start": 10.8,
+      "end": 15.5,
+      "text": "This should work correctly."
+    }
+  ]
+}
+
+### 14. Get Record Audio
+GET {{baseUrl}}/records/{{recordId}}/audio
+Authorization: Bearer {{accessToken}}
+
+### 15. Get Record PDF
+GET {{baseUrl}}/records/{{recordId}}/pdf
+Authorization: Bearer {{accessToken}}
+
+### 16. Delete Folder
+DELETE {{baseUrl}}/folders/{{folderId}}
+Authorization: Bearer {{accessToken}}
+
+### Error Cases
+
+### Login with wrong credentials
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "test@example.com",
+  "password": "wrongpassword"
+}
+
+### Register duplicate email
+POST {{baseUrl}}/register
+Content-Type: {{contentType}}
+
+{
+  "email": "test@example.com",
+  "password": "test123456",
+  "fullname": "Another User"
+}
+
+### Access protected route without token
+GET {{baseUrl}}/recordInfo
+
+### Access with invalid token
+GET {{baseUrl}}/recordInfo
+Authorization: Bearer invalid.token.here
