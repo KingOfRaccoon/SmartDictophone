@@ -1,6 +1,11 @@
-version: '3.8'
+version: '3.9'
 
 services:
+  buisness-logic:
+    build:
+      dockerfile: Dockerfile
+
+
   postgres:
     image: postgres:16-alpine
     container_name: smart-dictophone-db
@@ -77,6 +82,25 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    restart: always
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 5368709120
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
 volumes:
   postgres_data:
