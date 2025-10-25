@@ -63,4 +63,7 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.h2)
+
+    // Swagger UI
+    implementation("io.ktor:ktor-server-swagger")
 }

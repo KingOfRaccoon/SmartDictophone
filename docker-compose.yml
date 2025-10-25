@@ -5,14 +5,13 @@ services:
     build:
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8888:8888"
     depends_on:
       - postgres
       - minio
 
   postgres:
     image: postgres:16-alpine
-    container_name: smart-dictophone-db
     environment:
       POSTGRES_DB: smart_dictophone
       POSTGRES_USER: postgres
@@ -31,7 +30,6 @@ services:
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: smart-dictophone-minio
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -48,9 +46,8 @@ services:
       retries: 3
 
   # MinIO bucket initialization
-  createbuckets:
+  createbucket:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    container_name: smart-dictophone-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -64,7 +61,6 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
-    container_name: smart-dictophone-keycloak
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
@@ -72,41 +68,41 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/smart_dictophone
       KC_DB_USERNAME: postgres
       KC_DB_PASSWORD: postgres
-      KC_HOSTNAME: localhost
+      KC_HOSTNAME: "http://keycloak:8090"
       KC_HOSTNAME_STRICT: false
       KC_HTTP_ENABLED: true
       KC_HEALTH_ENABLED: true
     ports:
-      - "8090:8080"
+      - "8090:8090"
     command: start-dev
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
 
-  rabbitmq:
-    image: rabbitmq:4.1-management
-    hostname: rabbitmq
-    restart: always
-    ports:
-      - '5672:5672'
-      - '15672:15672'
-    environment:
-      - RABBITMQ_DEFAULT_USER=rmuser
-      - RABBITMQ_DEFAULT_PASS=rmpassword
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 5368709120
-    volumes:
-      - ./rabbitmq:/var/lib/rabbitmq
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 5s
-      timeout: 10s
-      retries: 5
+#  rabbitmq:
+#    image: rabbitmq:4.1-management
+#    hostname: rabbitmq
+#    restart: always
+#    ports:
+#      - '5672:5672'
+#      - '15672:15672'
+#    environment:
+#      - RABBITMQ_DEFAULT_USER=rmuser
+#      - RABBITMQ_DEFAULT_PASS=rmpassword
+#      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 5368709120
+#    volumes:
+#      - ./rabbitmq:/var/lib/rabbitmq
+#    healthcheck:
+#      test: rabbitmq-diagnostics -q ping
+#      interval: 5s
+#      timeout: 10s
+#      retries: 5
 
 volumes:
   postgres_data:

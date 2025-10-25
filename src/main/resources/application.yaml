@@ -3,10 +3,10 @@ ktor:
         modules:
             - ru.kingofraccoons.ApplicationKt.module
     deployment:
-        port: ${PORT:8080}
+        port: ${PORT:8888}
 
 database:
-  url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/smart_dictophone}
+  url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/smart_dictophone}
   driver: ${DATABASE_DRIVER:org.postgresql.Driver}
   user: ${DATABASE_USER:postgres}
   password: ${DATABASE_PASSWORD:postgres}
@@ -16,14 +16,14 @@ jwt:
   secret: ${JWT_SECRET:local-development-secret-change-me}
   issuer: "smart-dictophone-api"
   audience: "smart-dictophone-users"
-  realm: "Smart Dictophone"
+  realm: "master"
   accessTokenExpiration: 3600000   # 1 hour in milliseconds
   refreshTokenExpiration: 2592000000 # 30 days in milliseconds
 
 keycloak:
-  serverUrl: ${KEYCLOAK_SERVER_URL:http://localhost:8090}
-  realm: ${KEYCLOAK_REALM:smart-dictophone}
-  clientId: ${KEYCLOAK_CLIENT_ID:smart-dictophone-backend}
+  serverUrl: ${KEYCLOAK_SERVER_URL:http://keycloak:8090}
+  realm: ${KEYCLOAK_REALM:master}
+  clientId: ${KEYCLOAK_CLIENT_ID:iosapp}
   clientSecret: ${KEYCLOAK_CLIENT_SECRET:change-me}
   adminUsername: ${KEYCLOAK_ADMIN_USERNAME:admin}
   adminPassword: ${KEYCLOAK_ADMIN_PASSWORD:admin}
@@ -32,7 +32,7 @@ api:
   key: ${API_KEY:test-api-key}
 
 s3:
-  endpoint: ${S3_ENDPOINT:http://localhost:9000}
+  endpoint: ${S3_ENDPOINT:http://postgres:9000}
   region: ${S3_REGION:us-east-1}
   accessKey: ${S3_ACCESS_KEY:minioadmin}
   secretKey: ${S3_SECRET_KEY:minioadmin}
