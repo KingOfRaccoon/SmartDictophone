@@ -1,10 +1,14 @@
 version: '3.9'
 
 services:
-  buisness-logic:
+  api:
     build:
       dockerfile: Dockerfile
-
+    ports:
+      - "8080:8080"
+    depends_on:
+      - smart-dictophone-db
+      - smart-dictophone-minio
 
   postgres:
     image: postgres:16-alpine
