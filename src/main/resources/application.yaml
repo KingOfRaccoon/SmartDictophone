@@ -23,8 +23,8 @@ jwt:
 keycloak:
   serverUrl: ${KEYCLOAK_SERVER_URL:http://keycloak:8090}
   realm: ${KEYCLOAK_REALM:master}
-  clientId: ${KEYCLOAK_CLIENT_ID:iosapp}
-  clientSecret: ${KEYCLOAK_CLIENT_SECRET:change-me}
+  clientId: ${KEYCLOAK_CLIENT_ID:backend}
+  clientSecret: ${KEYCLOAK_CLIENT_SECRET:8NaOB00Bo2TLFGJiuHGfHR5CF5uPXjR2}
   adminUsername: ${KEYCLOAK_ADMIN_USERNAME:admin}
   adminPassword: ${KEYCLOAK_ADMIN_PASSWORD:admin}
 
