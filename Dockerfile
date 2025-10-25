@@ -1,6 +1,6 @@
 # Read https://ktor.io/docs/docker.html#build-run
 # Stage 1: Cache Gradle dependencies
-FROM gradle:latest AS cache
+FROM gradle:8.14.3-jdk8-corretto AS cache
 RUN mkdir -p /home/gradle/cache_home
 ENV GRADLE_USER_HOME=/home/gradle/cache_home
 COPY build.gradle.* gradle.properties /home/gradle/app/

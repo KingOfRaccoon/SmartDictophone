@@ -7,8 +7,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - smart-dictophone-db
-      - smart-dictophone-minio
+      - postgres
+      - minio
 
   postgres:
     image: postgres:16-alpine
@@ -30,7 +30,7 @@ services:
       retries: 5
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: smart-dictophone-minio
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -49,7 +49,7 @@ services:
 
   # MinIO bucket initialization
   createbuckets:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: smart-dictophone-minio-init
     depends_on:
       minio:
