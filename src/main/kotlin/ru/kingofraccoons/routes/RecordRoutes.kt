@@ -175,6 +175,8 @@ fun Route.recordRoutes(
                     )
                     return@post
                 }
+
+                // TODO: здесь идет коннект к RabbitMQ  и он отправляет в очередь `audio-transcription` в формате {'id': id_record}
                 
                 call.respond(HttpStatusCode.Created, record)
             } catch (e: Exception) {

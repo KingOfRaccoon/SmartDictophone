@@ -1,14 +1,14 @@
 version: '3.9'
 
 services:
-  api:
-    build:
-      dockerfile: Dockerfile
-    ports:
-      - "8888:8888"
-    depends_on:
-      - postgres
-      - minio
+#  api:
+#    build:
+#      dockerfile: Dockerfile
+#    ports:
+#      - "8888:8888"
+#    depends_on:
+#      - postgres
+#      - minio
 
   postgres:
     image: postgres:16-alpine
@@ -68,7 +68,7 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/smart_dictophone
       KC_DB_USERNAME: postgres
       KC_DB_PASSWORD: postgres
-      KC_HOSTNAME: "http://keycloak:8090"
+      KC_HOSTNAME: localhost
       KC_HOSTNAME_STRICT: false
       KC_HTTP_ENABLED: true
       KC_HEALTH_ENABLED: true
