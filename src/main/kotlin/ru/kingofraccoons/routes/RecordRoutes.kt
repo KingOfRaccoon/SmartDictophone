@@ -176,7 +176,14 @@ fun Route.recordRoutes(
                     return@post
                 }
 
-                // TODO: здесь идет коннект к RabbitMQ  и он отправляет в очередь `audio-transcription` в формате {'id': id_record}
+                // TODO: здесь идет коннект к RabbitMQ  и он отправляет в очередь `audio-transcription` в формате
+                // Пример:
+//                async def test_ml_service(audio: int):
+//                await broker.connect()
+//                await broker.publish(
+//                        audio,
+//                queue="audio-transcription")
+
                 
                 call.respond(HttpStatusCode.Created, record)
             } catch (e: Exception) {

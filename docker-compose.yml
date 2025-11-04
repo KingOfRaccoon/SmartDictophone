@@ -108,6 +108,7 @@ services:
 
   ml-service:
     image: voice-recorder-ml-service:latest
+    restart: always
     depends_on:
       - rabbitmq
       - minio
