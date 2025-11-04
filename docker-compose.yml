@@ -1,14 +1,16 @@
 version: '3.9'
 
 services:
-#  api:
-#    build:
-#      dockerfile: Dockerfile
-#    ports:
-#      - "8888:8888"
-#    depends_on:
-#      - postgres
-#      - minio
+  api:
+    build:
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8888:8888"
+    depends_on:
+      - postgres
+      - minio
+      - ml-service
 
   postgres:
     image: postgres:16-alpine
@@ -85,24 +87,31 @@ services:
       retries: 5
       start_period: 60s
 
-#  rabbitmq:
-#    image: rabbitmq:4.1-management
-#    hostname: rabbitmq
-#    restart: always
-#    ports:
-#      - '5672:5672'
-#      - '15672:15672'
-#    environment:
-#      - RABBITMQ_DEFAULT_USER=rmuser
-#      - RABBITMQ_DEFAULT_PASS=rmpassword
-#      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 5368709120
-#    volumes:
-#      - ./rabbitmq:/var/lib/rabbitmq
-#    healthcheck:
-#      test: rabbitmq-diagnostics -q ping
-#      interval: 5s
-#      timeout: 10s
-#      retries: 5
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    restart: always
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 5368709120
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  ml-service:
+    image: voice-recorder-ml-service:latest
+    depends_on:
+      - rabbitmq
+      - minio
+      - api
 
 volumes:
   postgres_data:
