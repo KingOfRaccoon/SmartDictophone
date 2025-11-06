@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,6 +6,8 @@ services:
       POSTGRES_DB: smart_dictophone
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      TZ: 'GMT+3'
+      PGTZ: 'GMT+3'
     ports:
       - "5432:5432"
     volumes:
@@ -37,7 +37,7 @@ services:
       retries: 3
 
   # MinIO bucket initialization
-  createbuckets:
+  createbucket:
     image: minio/mc:latest
     container_name: smart-dictophone-minio-init
     depends_on:
@@ -67,21 +67,102 @@ services:
       KC_HEALTH_ENABLED: true
     ports:
       - "8090:8080"
-    command: start-dev
+    volumes:
+      - ./keycloak/smart-dictophone-realm.json:/opt/keycloak/data/import/smart-dictophone-realm.json
+    command: 
+      - start-dev
+      - --import-realm
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
-      interval: 30s
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smart-dictophone-rabbitmq
+    hostname: rabbitmq
+    restart: always
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,info},{default,warning}] disk_free_limit 2147483648
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
       timeout: 10s
       retries: 5
-      start_period: 60s
+
+  # ml-service:
+  #   image: voice-recorder-ml-service:latest
+  #   container_name: smart-dictophone-ml-service
+  #   restart: always
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #   environment:
+  #     - RABBITMQ_HOST=rabbitmq
+  #     - RABBITMQ_PORT=5672
+  #     - RABBITMQ_USER=rmuser
+  #     - RABBITMQ_PASSWORD=rmpassword
+  #     - MINIO_ENDPOINT=minio:9000
+  #     - MINIO_ACCESS_KEY=minioadmin
+  #     - MINIO_SECRET_KEY=minioadmin
+  #     - MINIO_BUCKET=smart-dictophone-audio
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-dictophone-api
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/smart_dictophone
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - KEYCLOAK_SERVER_URL=http://keycloak:8080
+      - KEYCLOAK_PUBLIC_URL=http://localhost:8090
+      - KEYCLOAK_REALM=smart-dictophone
+      - KEYCLOAK_CLIENT_ID=smart-dictophone-backend
+      - KEYCLOAK_CLIENT_SECRET=your-backend-client-secret-change-me
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET=smart-dictophone-audio
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=rmuser
+      - RABBITMQ_PASSWORD=rmpassword
+      - PORT=8080
 
 volumes:
   postgres_data:
     driver: local
   minio_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 networks:

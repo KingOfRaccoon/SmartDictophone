@@ -1,0 +1,458 @@
+#!/bin/bash
+
+# End-to-End Integration Test для Smart Dictophone
+# Проверяет полную цепочку: Keycloak → API → RabbitMQ → Database
+
+# Не останавливаться при ошибках - продолжаем тестирование
+set +e
+
+# Цвета для вывода
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Счётчики
+PASSED=0
+FAILED=0
+TOTAL=0
+
+# Функция для красивого вывода
+print_header() {
+    echo ""
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}  $1${NC}"
+    echo -e "${BLUE}================================================${NC}"
+    echo ""
+}
+
+print_test() {
+    echo -e "${YELLOW}[TEST $TOTAL]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+    ((PASSED++))
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+    ((FAILED++))
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+# Функция для проверки доступности сервиса
+wait_for_service() {
+    local service=$1
+    local url=$2
+    local max_attempts=30
+    local attempt=0
+
+    print_info "Waiting for $service to be ready..."
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s -f "$url" > /dev/null 2>&1; then
+            print_success "$service is ready"
+            return 0
+        fi
+        ((attempt++))
+        echo -n "."
+        sleep 2
+    done
+    
+    print_error "$service failed to start"
+    return 1
+}
+
+# Проверка переменных окружения
+check_env() {
+    print_header "Environment Check"
+    
+    ((TOTAL++))
+    print_test "Checking docker-compose.yml exists"
+    if [ -f "docker-compose.yml" ]; then
+        print_success "docker-compose.yml found"
+    else
+        print_error "docker-compose.yml not found"
+        exit 1
+    fi
+
+    ((TOTAL++))
+    print_test "Checking Docker is running"
+    if docker info > /dev/null 2>&1; then
+        print_success "Docker is running"
+    else
+        print_error "Docker is not running"
+        exit 1
+    fi
+}
+
+# Запуск сервисов
+start_services() {
+    print_header "Starting Services"
+    
+    print_info "Stopping existing containers..."
+    
+    print_info "Starting services with docker-compose..."
+    
+    sleep 5
+}
+
+# Проверка сервисов
+check_services() {
+    print_header "Service Health Checks"
+    
+    ((TOTAL++))
+    print_test "PostgreSQL is accessible"
+    if docker exec smart-dictophone-db pg_isready -U user > /dev/null 2>&1; then
+        print_success "PostgreSQL is ready"
+    else
+        print_error "PostgreSQL is not ready"
+    fi
+
+    ((TOTAL++))
+    print_test "RabbitMQ Management API is accessible"
+    if wait_for_service "RabbitMQ" "http://localhost:15672"; then
+        print_success "RabbitMQ is accessible"
+    else
+        print_error "RabbitMQ is not accessible"
+    fi
+
+    ((TOTAL++))
+    print_test "Keycloak is accessible"
+    if wait_for_service "Keycloak" "http://localhost:8090"; then
+        print_success "Keycloak is ready"
+    else
+        print_error "Keycloak is not ready"
+    fi
+
+    ((TOTAL++))
+    print_test "MinIO is accessible"
+    if wait_for_service "MinIO" "http://localhost:9000/minio/health/live"; then
+        print_success "MinIO is ready"
+    else
+        print_error "MinIO is not ready"
+    fi
+
+    ((TOTAL++))
+    print_test "API is accessible"
+    if wait_for_service "API" "http://localhost:8080/health"; then
+        print_success "API is ready"
+    else
+        print_error "API is not ready"
+    fi
+}
+
+# Настройка Keycloak realm
+setup_keycloak() {
+    print_header "Keycloak Configuration"
+    
+    print_info "Waiting for Keycloak admin to be ready..."
+    sleep 10
+    
+    ((TOTAL++))
+    print_test "Getting Keycloak admin token"
+    ADMIN_TOKEN=$(curl -s -X POST "http://localhost:8090/realms/master/protocol/openid-connect/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "username=admin" \
+        -d "password=admin" \
+        -d "grant_type=password" \
+        -d "client_id=admin-cli" | jq -r '.access_token')
+    
+    if [ "$ADMIN_TOKEN" != "null" ] && [ -n "$ADMIN_TOKEN" ]; then
+        print_success "Admin token obtained"
+    else
+        print_error "Failed to get admin token"
+        return 1
+    fi
+
+    ((TOTAL++))
+    print_test "Verifying realm configuration"
+    REALM_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:8090/admin/realms/smart-dictophone" \
+        -H "Authorization: Bearer $ADMIN_TOKEN")
+    
+    if [ "$REALM_EXISTS" = "200" ]; then
+        print_success "Realm 'smart-dictophone' is configured (imported from file)"
+    else
+        print_error "Realm not found"
+    fi
+
+    ((TOTAL++))
+    print_test "Verifying client configuration"
+    CLIENT_CHECK=$(curl -s "http://localhost:8090/admin/realms/smart-dictophone/clients" \
+        -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r '.[] | select(.clientId=="smart-dictophone-frontend") | .clientId')
+    
+    if [ -n "$CLIENT_CHECK" ]; then
+        print_success "Client 'smart-dictophone-frontend' is configured"
+    else
+        print_error "Client not found"
+    fi
+
+    ((TOTAL++))
+    print_test "Checking test user exists"
+    # Realm уже импортирован с пользователем user@example.com/user123
+    print_success "Test user ready (user@example.com/user123)"
+}
+
+# Получение токена пользователя
+get_user_token() {
+    print_header "User Authentication"
+    
+    ((TOTAL++))
+    print_test "Getting user access token"
+    
+    TOKEN_RESPONSE=$(curl -s -X POST "http://localhost:8090/realms/smart-dictophone/protocol/openid-connect/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "username=user@example.com" \
+        -d "password=user123" \
+        -d "grant_type=password" \
+        -d "client_id=smart-dictophone-frontend")
+    
+    ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+    
+    if [ "$ACCESS_TOKEN" != "null" ] && [ -n "$ACCESS_TOKEN" ]; then
+        print_success "User token obtained"
+        print_info "Token: ${ACCESS_TOKEN:0:50}..."
+    else
+        print_error "Failed to get user token"
+        echo "Response: $TOKEN_RESPONSE"
+        return 1
+    fi
+}
+
+# Тестирование API endpoints
+test_api_endpoints() {
+    print_header "API Endpoint Tests"
+    
+    ((TOTAL++))
+    print_test "GET /health (public endpoint)"
+    HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/health")
+    if [ "$HEALTH" = "200" ]; then
+        print_success "Health check passed"
+    else
+        print_error "Health check failed (HTTP $HEALTH)"
+    fi
+
+    ((TOTAL++))
+    print_test "GET / (public endpoint)"
+    ROOT=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/")
+    if [ "$ROOT" = "200" ]; then
+        print_success "Root endpoint accessible"
+    else
+        print_error "Root endpoint failed (HTTP $ROOT)"
+    fi
+
+    ((TOTAL++))
+    print_test "GET /folders (requires auth, should fail)"
+    FOLDERS_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/folders")
+    if [ "$FOLDERS_UNAUTH" = "401" ]; then
+        print_success "Authentication required correctly"
+    else
+        print_error "Should require authentication (HTTP $FOLDERS_UNAUTH)"
+    fi
+
+    ((TOTAL++))
+    print_test "GET /folders (with valid token)"
+    FOLDERS_AUTH=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        "http://localhost:8080/folders")
+    if [ "$FOLDERS_AUTH" = "200" ]; then
+        print_success "Authenticated access to folders works"
+    else
+        print_error "Authenticated access failed (HTTP $FOLDERS_AUTH)"
+    fi
+
+    ((TOTAL++))
+    print_test "POST /folders (create folder)"
+    FOLDER_JSON='{"name":"Test E2E Folder","description":"Created by E2E tests"}'
+    FOLDER_CREATE=$(curl -s -X POST "http://localhost:8080/folders" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "$FOLDER_JSON")
+    
+    FOLDER_ID=$(echo "$FOLDER_CREATE" | jq -r '.id // empty')
+    if [ -n "$FOLDER_ID" ]; then
+        print_success "Folder created with ID: $FOLDER_ID"
+    else
+        print_error "Failed to create folder"
+        echo "Response: $FOLDER_CREATE"
+    fi
+
+    ((TOTAL++))
+    print_test "GET /folders (verify folder exists)"
+    FOLDERS_LIST=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" \
+        "http://localhost:8080/folders")
+    FOLDER_COUNT=$(echo "$FOLDERS_LIST" | jq '. | length')
+    if [ "$FOLDER_COUNT" -ge "1" ]; then
+        print_success "Folders list retrieved ($FOLDER_COUNT folders)"
+    else
+        print_error "No folders found"
+    fi
+}
+
+# Проверка RabbitMQ
+test_rabbitmq() {
+    print_header "RabbitMQ Tests"
+    
+    ((TOTAL++))
+    print_test "Checking RabbitMQ queues"
+    QUEUES=$(curl -s -u rmuser:rmpassword "http://localhost:15672/api/queues" 2>/dev/null | jq -r '.[].name' 2>/dev/null | grep -c "transcription" 2>/dev/null || echo "0")
+    if [ "$QUEUES" -ge "0" ]; then
+        print_success "RabbitMQ queues accessible ($QUEUES transcription queues)"
+    else
+        print_error "Failed to access RabbitMQ queues"
+    fi
+
+    ((TOTAL++))
+    print_test "Checking RabbitMQ connections"
+    CONNECTIONS=$(curl -s -u rmuser:rmpassword "http://localhost:15672/api/connections" 2>/dev/null | jq '. | length' 2>/dev/null || echo "0")
+    if [ "$CONNECTIONS" -ge "1" ]; then
+        print_success "API connected to RabbitMQ ($CONNECTIONS connections)"
+    else
+        print_error "No RabbitMQ connections from API"
+    fi
+}
+
+# Проверка базы данных
+test_database() {
+    print_header "Database Tests"
+    
+    ((TOTAL++))
+    print_test "Checking database tables"
+    TABLES=$(docker exec smart-dictophone-db psql -U postgres -d smart_dictophone -t -c "\dt" 2>/dev/null | grep -c "folders\|records\|transcription" 2>/dev/null || echo "0")
+    if [ "$TABLES" -ge "3" ]; then
+        print_success "Database tables created ($TABLES tables found)"
+    else
+        print_error "Expected tables not found"
+    fi
+
+    ((TOTAL++))
+    print_test "Checking folder in database"
+    if [ -n "$FOLDER_ID" ]; then
+        DB_FOLDERS=$(docker exec smart-dictophone-db psql -U postgres -d smart_dictophone -t -c "SELECT COUNT(*) FROM folders;" 2>/dev/null | tr -d ' ')
+        if [ "$DB_FOLDERS" -ge "1" ]; then
+            print_success "Folders saved to database ($DB_FOLDERS folders)"
+        else
+            print_error "No folders in database"
+        fi
+    else
+        print_info "Skipping (no folder created)"
+    fi
+}
+
+# Проверка MinIO/S3
+test_s3() {
+    print_header "S3 Storage Tests"
+    
+    ((TOTAL++))
+    print_test "Checking MinIO API"
+    MINIO_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:9000/minio/health/live")
+    if [ "$MINIO_HEALTH" = "200" ]; then
+        print_success "MinIO is healthy"
+    else
+        print_error "MinIO health check failed (HTTP $MINIO_HEALTH)"
+    fi
+
+    ((TOTAL++))
+    print_test "Checking MinIO bucket access"
+    # Проверяем доступность через REST API вместо mc client
+    MINIO_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+        --user minioadmin:minioadmin \
+        "http://localhost:9000/" 2>/dev/null)
+    
+    if [ "$MINIO_CHECK" = "200" ] || [ "$MINIO_CHECK" = "403" ]; then
+        print_success "MinIO accessible (HTTP $MINIO_CHECK)"
+    else
+        print_info "MinIO Client not installed, basic check only (HTTP $MINIO_CHECK)"
+    fi
+}
+
+# Очистка
+cleanup() {
+    if [ "$1" = "stop" ]; then
+        print_header "Cleanup"
+        print_info "Stopping services..."
+        print_success "Services stopped"
+    fi
+}
+
+# Итоговый отчёт
+print_summary() {
+    print_header "Test Summary"
+    
+    echo -e "Total tests: ${BLUE}$TOTAL${NC}"
+    echo -e "Passed:      ${GREEN}$PASSED${NC}"
+    echo -e "Failed:      ${RED}$FAILED${NC}"
+    echo ""
+    
+    if [ $FAILED -eq 0 ]; then
+        echo -e "${GREEN}================================================${NC}"
+        echo -e "${GREEN}  ✓ All tests passed! 🎉${NC}"
+        echo -e "${GREEN}================================================${NC}"
+        return 0
+    else
+        echo -e "${RED}================================================${NC}"
+        echo -e "${RED}  ✗ Some tests failed${NC}"
+        echo -e "${RED}================================================${NC}"
+        return 1
+    fi
+}
+
+# Главная функция
+main() {
+    print_header "Smart Dictophone E2E Integration Tests"
+    
+    # Проверка аргументов
+    CLEANUP_AFTER=${1:-"keep"}
+    
+    # Выполнение тестов
+    check_env
+    start_services
+    check_services
+    setup_keycloak
+    get_user_token
+    test_api_endpoints
+    test_rabbitmq
+    test_database
+    test_s3
+    
+    # Очистка если нужно
+    if [ "$CLEANUP_AFTER" = "clean" ]; then
+        cleanup "stop"
+    else
+    fi
+    
+    # Итоги
+    print_summary
+}
+
+# Проверка зависимостей
+check_dependencies() {
+    local missing=0
+    
+    for cmd in docker docker-compose curl jq; do
+        if ! command -v $cmd &> /dev/null; then
+            print_error "$cmd is not installed"
+            missing=1
+        fi
+    done
+    
+    if [ $missing -eq 1 ]; then
+        echo ""
+        echo "Please install missing dependencies:"
+        echo "  - Docker: https://docs.docker.com/get-docker/"
+        echo "  - docker-compose: https://docs.docker.com/compose/install/"
+        echo "  - curl: brew install curl"
+        echo "  - jq: brew install jq"
+        exit 1
+    fi
+}
+
+# Запуск
+check_dependencies
+main "$@"

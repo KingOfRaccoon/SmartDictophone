@@ -1,28 +1,64 @@
 # Smart Dictophone Backend API
 
-Полнофункциональный бэкенд на **Ktor 3.x** для iOS-приложения "Умный диктофон" с автоматической транскрипцией аудиозаписей встреч.
+Полнофункциональный бэкенд на **Ktor 3.x** для iOS-приложения "Умный диктофон" с автоматической транскрипцией аудиозаписей встреч и интеграцией **Keycloak**.
 
-## 🚀 Технологический стек
+## 📖 Документация
+
+- **[🚀 Быстрый старт](QUICKSTART.md)** - запуск за 5 минут
+- **[🔐 Настройка Keycloak](KEYCLOAK_SETUP.md)** - полное руководство по Keycloak
+- **[🤖 ML сервис транскрипции](ML_SERVICE_INTEGRATION.md)** - интеграция с ML сервисом
+- **[💡 Примеры API](keycloak/KEYCLOAK_API_EXAMPLES.md)** - примеры запросов к Keycloak
+- **[📝 API документация](API_EXAMPLES.md)** - примеры использования всех эндпоинтов
+- **[✅ Чек-лист](CHECKLIST.md)** - требования и их выполнение
+
+## �🚀 Технологический стек
 
 - **Kotlin** + **Ktor 3.3.0** (Netty)
 - **PostgreSQL** с **Exposed ORM** + **HikariCP**
-- **JWT Authentication** (Access/Refresh токены)
+- **Keycloak** для аутентификации и авторизации (JWT)
 - **S3/MinIO** для хранения аудиофайлов
 - **Apache PDFBox** для генерации PDF
-- **BCrypt** для хеширования паролей
+- **Swagger UI** для документации API
 - **Kotlin Coroutines** для асинхронности
 - **Kotlin Logging** (SLF4J + Logback)
 
-## 📋 Требования
+## ✨ Ключевые особенности
+
+- 🔐 **Keycloak Integration** - аутентификация через Keycloak (без хранения пользователей в БД)
+- 📁 **Автоматические папки** - при первом входе создаются папки: Работа, Учёба, Личное
+- 🎵 **Умное именование файлов** - аудио сохраняется как `{recordId}.m4a`
+- � **Swagger UI** - интерактивная документация API
+- 🔄 **JWT Refresh** - автоматическое обновление токенов
+- 📄 **PDF генерация** - экспорт транскрипции в PDF
+- 🔍 **Поиск и фильтрация** - по тексту, папкам, датам
+
+## �📋 Требования
 
 - **JDK 17+**
 - **PostgreSQL 14+**
+- **Keycloak 23+**
 - **MinIO** или AWS S3
 - **Gradle 8+**
 
-## ⚙️ Установка и запуск
+## ⚙️ Быстрый старт
 
-### 1. Настройка PostgreSQL
+### Вариант 1: Docker Compose (рекомендуется)
+
+```bash
+# Запустить все сервисы (PostgreSQL, Keycloak, MinIO, RabbitMQ, API)
+docker-compose up -d
+
+# Проверить работоспособность всех сервисов
+./scripts/health-check.sh
+
+# Собрать и запустить приложение
+./gradlew build
+./gradlew run
+```
+
+### Вариант 2: Ручная настройка
+
+#### 1. Настройка PostgreSQL
 
 ```bash
 # Создать базу данных
@@ -33,7 +69,29 @@ psql -U postgres
 CREATE DATABASE smart_dictophone;
 ```
 
-### 2. Настройка MinIO (локально)
+#### 2. Настройка Keycloak
+
+**Важно:** Keycloak автоматически настраивается при запуске через `docker-compose up -d`!
+
+Realm импортируется автоматически из `keycloak/smart-dictophone-realm.json` и включает:
+- Realm: `smart-dictophone`
+- Клиенты: `smart-dictophone-backend` и `smart-dictophone-frontend`
+- Роли: `user`, `admin`
+- Тестовые пользователи: `admin@example.com` / `admin123` и `user@example.com` / `user123`
+
+**Доступ к Admin Console:**
+- URL: http://localhost:8090
+- Username: `admin`
+- Password: `admin`
+
+**📚 Подробная документация:** См. `KEYCLOAK_SETUP.md` для полной информации о настройке и использовании.
+
+**⚠️ Важно для Production:** Обязательно измените client secret после первого запуска:
+1. Откройте http://localhost:8090
+2. Clients → smart-dictophone-backend → Credentials → Regenerate Secret
+3. Обновите `KEYCLOAK_CLIENT_SECRET` в конфигурации
+
+#### 3. Настройка MinIO (локально)
 
 ```bash
 # Docker
@@ -45,7 +103,7 @@ docker run -p 9000:9000 -p 9001:9001 \
 # Создать bucket 'smart-dictophone-audio' через веб-консоль (http://localhost:9001)
 ```
 
-### 3. Конфигурация
+#### 4. Конфигурация
 
 Отредактируйте `src/main/resources/application.yaml` или задайте переменные окружения:
 
@@ -55,17 +113,21 @@ database:
   user: "postgres"
   password: "postgres"
 
-jwt:
-  secret: "your-256-bit-secret-key-change-in-production"
+keycloak:
+  serverUrl: "http://localhost:8080"
+  realm: "smart-dictophone"
+  clientId: "smart-dictophone-client"
+  clientSecret: "your-client-secret"
 
 api:
-  key: "your-api-key-for-whisper-ml"
+  key: "your-api-key-for-transcription-service"
 
 s3:
   endpoint: "http://localhost:9000"
   accessKey: "minioadmin"
   secretKey: "minioadmin"
-  bucket: "smart-dictophone-audio"
+  bucket: "smart-dictophone"
+  region: "us-east-1"
 ```
 
 **Переменные окружения** (приоритет над yaml):
@@ -73,14 +135,17 @@ s3:
 export DATABASE_URL="jdbc:postgresql://localhost:5432/smart_dictophone"
 export DATABASE_USER="postgres"
 export DATABASE_PASSWORD="postgres"
-export JWT_SECRET="your-secret-key"
+export KEYCLOAK_SERVER_URL="http://localhost:8080"
+export KEYCLOAK_REALM="smart-dictophone"
+export KEYCLOAK_CLIENT_ID="smart-dictophone-client"
+export KEYCLOAK_CLIENT_SECRET="your-secret"
 export API_KEY="your-api-key"
 export S3_ENDPOINT="http://localhost:9000"
 export S3_ACCESS_KEY="minioadmin"
 export S3_SECRET_KEY="minioadmin"
 ```
 
-### 4. Сборка и запуск
+#### 5. Сборка и запуск
 
 ```bash
 # Собрать проект
@@ -93,381 +158,266 @@ export S3_SECRET_KEY="minioadmin"
 java -jar build/libs/smart_dictophone-0.0.1-all.jar
 ```
 
-Сервер доступен на `http://localhost:8080`
+### 🌐 Доступ к сервисам
+
+- **API Server**: http://localhost:8080
+- **Swagger UI**: http://localhost:8080/swagger-ui
+- **Health Check**: http://localhost:8080/health
+- **Keycloak Admin**: http://localhost:8090 (если через Docker)
+- **MinIO Console**: http://localhost:9001
+- **RabbitMQ Management**: http://localhost:15672 (guest/guest)
+
+## 🧪 Тестирование
+
+### Health Check
+Проверка работоспособности всех сервисов:
+
+```bash
+./scripts/health-check.sh
+```
+
+Проверяет:
+- ✅ Docker containers status
+- ✅ Network ports availability
+- ✅ HTTP endpoints (Keycloak, MinIO, RabbitMQ, API)
+- ✅ Service connectivity from API container
+- ✅ RabbitMQ queue existence
+- ✅ PostgreSQL tables
+- ✅ MinIO bucket
+
+### Quick Integration Test
+Быстрая проверка основных функций API:
+
+```bash
+./scripts/quick-test.sh
+```
+
+Тестирует:
+1. ✅ Authentication (получение access token от Keycloak)
+2. ✅ API root endpoint
+3. ✅ Get folders (автосоздание default папок)
+4. ✅ Create folder
+5. ✅ Get records
+
+### Full Integration Test
+Полный набор интеграционных тестов (17+ тестов):
+
+```bash
+./scripts/integration-test.sh
+```
+
+Покрывает:
+- Authentication flow (3 теста)
+- Folder operations (3 теста)
+- Record operations (7 тестов)
+- Search & filter (2 теста)
+- Cleanup (2 теста)
+
+📊 **Отчет о тестировании**: См. `INTEGRATION_TEST_REPORT.md` для детальной информации о последнем тестировании.
+
+### E2E Tests (End-to-End)
+Комплексное тестирование всей системы с реальными сервисами (24+ проверок):
+
+```bash
+./scripts/test-e2e.sh
+```
+
+Проверяет:
+- **Environment** - наличие docker-compose.yml, запущен ли Docker
+- **Service Health** - PostgreSQL, RabbitMQ, Keycloak, MinIO, API
+- **Keycloak Configuration** - realm, client, test user
+- **User Authentication** - получение JWT токена через OAuth2 password grant
+- **API Endpoints** - публичные и защищённые эндпоинты
+- **Folder CRUD** - создание, получение, обновление, удаление папок
+- **RabbitMQ** - проверка очередей и соединений
+- **Database** - наличие таблиц и сохранение данных
+- **S3 Storage** - доступность MinIO и бакета
+
+**Особенности:**
+- ✅ Все 24+ проверки проходят успешно
+- 🎨 Цветной вывод в терминал (зелёный/красный)
+- 📊 Генерация HTML отчёта
+- ⏱️ Выполняется ~2 минуты
+- 🔧 Автоматическая очистка тестовых данных
+
+**Требования:**
+- Docker и docker-compose должны быть запущены
+- Все сервисы подняты через `docker-compose up -d`
+- Keycloak realm импортирован (автоматически при первом запуске)
+
+📚 **Подробная документация**: См. `E2E_TESTING.md` для полного руководства по E2E тестированию.
 
 ## 📚 API Документация
 
-### Аутентификация
+### 🎨 Swagger UI (рекомендуется)
 
-#### POST `/login`
-**Вход в систему**
+Интерактивная документация доступна по адресу:
 
-**Request:**
+**http://localhost:8080/swagger-ui**
+
+Там вы можете:
+- Просмотреть все эндпоинты
+- Протестировать API прямо в браузере
+- Посмотреть схемы запросов/ответов
+- Скопировать примеры curl команд
+
+### 📖 Дополнительная документация
+
+- `API_EXAMPLES.md` - примеры использования всех эндпоинтов
+- `API_REFERENCE_KEYCLOAK.md` - настройка Keycloak
+- `CHECKLIST.md` - чек-лист выполненных требований
+- `REFACTORING_SUMMARY.md` - подробное описание изменений
+
+### 🔑 Аутентификация
+
+API использует **Keycloak** для аутентификации. Пользователи НЕ хранятся в локальной БД.
+
+#### Authorization Flow:
+
+1. **Frontend** перенаправляет пользователя на **Keycloak Login Page**
+2. Пользователь вводит credentials в **Keycloak Web View**
+3. Keycloak возвращает **JWT токен** (access + refresh)
+4. Frontend использует токен для всех запросов: `Authorization: Bearer <token>`
+5. Backend валидирует токен и извлекает user info из JWT payload
+
+#### Пример получения токена:
+
+```bash
+curl -X POST http://localhost:8080/realms/smart-dictophone/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password" \
+  -d "client_id=smart-dictophone-client" \
+  -d "client_secret=YOUR_SECRET" \
+  -d "username=user@example.com" \
+  -d "password=password123"
+```
+
+Ответ:
 ```json
 {
-  "email": "user@example.com",
-  "password": "password123"
+  "access_token": "eyJhbGci...",
+  "refresh_token": "eyJhbGci...",
+  "expires_in": 3600
 }
 ```
 
-**Response (200):**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "fullName": "John Doe",
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
+### 📁 Краткий обзор эндпоинтов
+
+Полная документация доступна в **Swagger UI**: http://localhost:8080/swagger-ui
+
+#### Аутентификация (Authentication)
+- `POST /refresh` - обновить access token
+- `POST /loginOnToken` - проверить токен
+
+#### Пользователь (User)
+- `GET /recordInfo` - статистика пользователя (автоматически создаёт дефолтные папки)
+
+#### Папки (Folders)
+- `GET /folders` - список папок (создаёт дефолтные при первом запросе)
+- `POST /folders` - создать папку
+- `PUT /folders/{id}` - обновить папку
+- `DELETE /folders/{id}` - удалить папку
+
+#### Записи (Records)
+- `GET /records` - список с поиском и пагинацией
+- `POST /records` - создать запись (файл сохраняется как `{id}.m4a`)
+- `GET /records/{id}/audio` - скачать аудиофайл
+- `GET /records/{id}/pdf` - скачать PDF с транскрипцией
+- `POST /records/{id}/transcribe` - сохранить транскрипцию (API key)
+
+### 🎯 Пример: Создание записи
+
+```bash
+curl -X POST http://localhost:8080/records \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "recordFile=@audio.m4a" \
+  -F "name=Совещание" \
+  -F "datetime=2024-01-15T14:30:00" \
+  -F "category=WORK" \
+  -F "folderId=1"
 ```
 
-**Errors:** `400`, `401`
+Файл будет сохранён как `{recordId}.m4a` в S3.
+
+См. `API_EXAMPLES.md` для подробных примеров всех эндпоинтов.
 
 ---
 
-#### POST `/register`
-**Регистрация нового пользователя**
+## 🗂️ Архитектура
 
-**Request:**
-```json
-{
-  "email": "newuser@example.com",
-  "password": "password123",
-  "fullname": "Jane Smith"
-}
-```
-
-**Response (201):** Аналогично `/login`
-
-**Errors:** `400`, `409` (email уже существует)
-
----
-
-#### POST `/loginOnToken`
-**Обновление токенов через Bearer токен**
-
-**Headers:**
-```
-Authorization: Bearer <access_or_refresh_token>
-```
-
-**Response (200):** Аналогично `/login`
-
-**Errors:** `400`, `401`
-
----
-
-### Пользователь
-
-#### GET `/recordInfo`
-**Информация о пользователе и статистика**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200):**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "fullName": "John Doe",
-  "countRecords": 42,
-  "countMinutes": 240
-}
-```
-
-**Errors:** `401`, `404`
-
----
-
-### Записи (Records)
-
-#### GET `/records`
-**Список записей с пагинацией и фильтрацией**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Query Parameters:**
-- `search` (optional): поиск по названию/описанию
-- `folderId` (optional): фильтр по папке
-- `page` (optional, default=0): номер страницы
-- `size` (optional, default=20): размер страницы
-
-**Response (200):**
-```json
-{
-  "content": [
-    {
-      "id": 1,
-      "folderId": 3,
-      "title": "Meeting with Team",
-      "description": null,
-      "datetime": "2025-10-09T14:30:00",
-      "latitude": 37.7749,
-      "longitude": -122.4194,
-      "duration": 1800,
-      "category": "Work",
-      "audioUrl": "http://localhost:9000/smart-dictophone-audio/audio/uuid-meeting.m4a",
-      "createdAt": "2025-10-09T10:00:00",
-      "updatedAt": "2025-10-09T10:00:00"
-    }
-  ],
-  "totalElements": 42,
-  "totalPages": 3
-}
-```
-
-**Errors:** `401`
-
----
-
-#### POST `/records`
-**Создание новой записи с загрузкой аудио**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-Content-Type: multipart/form-data
-```
-
-**Form Data:**
-- `datetime` (required): ISO8601 datetime (e.g., `2025-10-09T14:30:00`)
-- `name` (required): название записи
-- `category` (required): `Work`, `Study`, или `Personal`
-- `recordFile` (required): аудиофайл (binary, m4a)
-- `folderId` (optional): ID папки
-- `place` (optional): координаты в формате `lat,lng` (e.g., `37.7749,-122.4194`)
-
-**Response (201):** Record object
-
-**Errors:** `400`, `401`
-
----
-
-#### GET `/records/{id}/audio`
-**Скачать аудиофайл записи**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200):** Binary audio/m4a
-
-**Errors:** `401`, `404`
-
----
-
-#### GET `/records/{id}/pdf`
-**Скачать PDF с транскрипцией**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200):** Binary application/pdf
-
-**Errors:** `401`, `404` (нет транскрипции)
-
----
-
-#### POST `/records/{id}/transcribe`
-**Сохранить транскрипцию записи (из Whisper ML)**
-
-**Headers:**
-```
-X-API-Key: <your-api-key>
-```
-
-**Request:**
-```json
-{
-  "segments": [
-    {
-      "start": 0.0,
-      "end": 5.2,
-      "text": "Hello, this is the meeting transcript."
-    },
-    {
-      "start": 5.2,
-      "end": 10.8,
-      "text": "We will discuss the project roadmap."
-    }
-  ]
-}
-```
-
-**Response (200):**
-```json
-{
-  "message": "Transcription saved successfully"
-}
-```
-
-**Errors:** `400`, `401`, `404`
-
----
-
-### Папки (Folders)
-
-#### GET `/folders`
-**Список всех папок пользователя**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "userId": 1,
-    "name": "Work Meetings",
-    "description": "All work-related meetings",
-    "createdAt": "2025-10-01T10:00:00",
-    "updatedAt": "2025-10-01T10:00:00"
-  }
-]
-```
-
-**Errors:** `401`
-
----
-
-#### POST `/folders`
-**Создать новую папку**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Request:**
-```json
-{
-  "name": "Study Notes",
-  "description": "University lectures"
-}
-```
-
-**Response (201):** Folder object
-
-**Errors:** `400`, `401`
-
----
-
-#### PUT `/folders/{id}`
-**Обновить папку**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Request:**
-```json
-{
-  "name": "Updated Folder Name",
-  "description": "New description"
-}
-```
-
-**Response (200):** Updated Folder object
-
-**Errors:** `400`, `401`, `404`
-
----
-
-#### DELETE `/folders/{id}`
-**Удалить папку**
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (204):** No Content
-
-**Errors:** `401`, `404`
-
----
-
-## 🗂️ Структура проекта
+### Структура проекта
 
 ```
 smart_dictophone/
 ├── src/main/kotlin/ru/kingofraccoons/
-│   ├── Application.kt              # Главный файл, конфигурация плагинов
+│   ├── Application.kt              # Главный файл, плагины, Swagger UI
 │   ├── dao/
-│   │   └── DAOs.kt                 # Data Access Objects (UserDAO, FolderDAO, etc.)
+│   │   └── DAOs.kt                 # Data Access Objects (без UserDAO)
 │   ├── database/
 │   │   └── DatabaseFactory.kt      # Инициализация БД, HikariCP
 │   ├── models/
-│   │   └── Entities.kt             # Exposed таблицы, DTOs, Request/Response
+│   │   └── Entities.kt             # Exposed таблицы, DTOs
 │   ├── routes/
-│   │   ├── AuthRoutes.kt           # /login, /register, /loginOnToken
-│   │   ├── RecordRoutes.kt         # /records, /recordInfo, /transcribe
-│   │   └── FolderRoutes.kt         # /folders CRUD
+│   │   ├── AuthRoutes.kt           # /refresh, /loginOnToken
+│   │   ├── UserRoutes.kt           # /recordInfo (с автосозданием папок)
+│   │   ├── RecordRoutes.kt         # /records (id.m4a naming)
+│   │   └── FolderRoutes.kt         # /folders (дефолтные папки)
 │   ├── security/
-│   │   └── JwtService.kt           # JWT генерация/верификация, BCrypt
+│   │   └── JwtService.kt           # Keycloak integration
 │   └── services/
+│       ├── KeycloakService.kt      # Keycloak API client
 │       ├── S3Service.kt            # AWS S3/MinIO клиент
 │       └── PdfService.kt           # Apache PDFBox для PDF
 ├── src/main/resources/
-│   ├── application.yaml            # Конфигурация (БД, JWT, S3, API)
-│   └── logback.xml                 # Логирование
-├── build.gradle.kts                # Зависимости Gradle
-└── README.md                       # Эта документация
+│   ├── application.yaml            # Конфигурация
+│   ├── logback.xml                 # Логирование
+│   └── openapi/
+│       └── documentation.yaml      # OpenAPI спецификация
+├── build.gradle.kts                # Зависимости
+├── docker-compose.yml              # PostgreSQL, Keycloak, MinIO
+├── API_EXAMPLES.md                 # Примеры API
+├── API_REFERENCE_KEYCLOAK.md       # Настройка Keycloak
+├── CHECKLIST.md                    # Чек-лист требований
+└── REFACTORING_SUMMARY.md          # Описание изменений
 ```
 
-## 🗄️ ER-диаграмма БД
+### ER-диаграмма БД
 
 ```
-Users
-  ├── id (PK, Long)
-  ├── email (unique)
-  ├── password_hash
-  ├── full_name
-  ├── created_at
-  └── updated_at
-
 Folders
   ├── id (PK, Long)
-  ├── user_id (FK → Users)
+  ├── keycloak_user_id (String) ← Keycloak user ID from JWT
   ├── name
-  ├── description
+  ├── description (nullable)
+  ├── is_default (Boolean)        ← Дефолтная папка
   ├── created_at
   └── updated_at
 
 Records
-  ├── id (PK, Long)
+  ├── id (PK, Long)               ← Используется для имени файла: {id}.m4a
   ├── folder_id (FK → Folders, nullable)
   ├── title
-  ├── description
+  ├── description (nullable)
   ├── datetime
   ├── latitude (nullable)
   ├── longitude (nullable)
   ├── duration (seconds)
-  ├── category (ENUM: Work/Study/Personal)
-  ├── audio_url
+  ├── category (ENUM: WORK/STUDY/PERSONAL/OTHER)
+  ├── audio_url                   ← S3 URL: bucket/{id}.m4a
   ├── created_at
   └── updated_at
 
 TranscriptionSegments
   ├── id (PK, Long)
   ├── record_id (FK → Records)
-  ├── start (Float)
-  ├── end (Float)
+  ├── start_time (Float)
+  ├── end_time (Float)
   └── text
 ```
+
+> **Важно:** Таблица `Users` удалена! Все данные пользователя извлекаются из JWT токена Keycloak.
+
+---
 
 ## 🧪 Тестирование
 
@@ -475,62 +425,139 @@ TranscriptionSegments
 # Запустить тесты
 ./gradlew test
 
-# Пример cURL-запроса
-curl -X POST http://localhost:8080/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@test.com","password":"test123","fullname":"Test User"}'
+# Собрать проект
+./gradlew build
+
+# Запустить приложение
+./gradlew run
 ```
+
+### Пример cURL-запроса
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Получить информацию о пользователе (создаст дефолтные папки)
+curl http://localhost:8080/recordInfo \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+---
 
 ## 🔒 Безопасность
 
-- Пароли хешируются с **BCrypt** (salt rounds = 10)
-- JWT токены с HMAC-SHA256
-- Access Token: 1 час
-- Refresh Token: 30 дней
-- API Key валидация для транскрипции (X-API-Key header)
-- CORS настроен (по умолчанию `anyHost()`, измените для продакшена)
+- ✅ **Keycloak JWT** - централизованная аутентификация
+- ✅ **No password storage** - пароли хранятся только в Keycloak
+- ✅ **API Key** для сервисных запросов (транскрипция)
+- ✅ **CORS** настроен (измените `anyHost()` для продакшена)
+- ✅ **Owner checks** - доступ только к своим ресурсам
+
+---
 
 ## 📦 Production Deployment
 
-1. **Измените** `jwt.secret` на криптостойкий (256+ бит)
-2. **Настройте** PostgreSQL с SSL
-3. **Используйте** AWS S3 вместо MinIO
-4. **Ограничьте** CORS: `allowHost("yourdomain.com")`
-5. **Настройте** HTTPS (reverse proxy: Nginx/Traefik)
-6. **Логи**: настройте Logback для production (ротация, уровни)
+### Checklist для production:
+
+1. ☑️ **Keycloak**: настройте realm и client
+2. ☑️ **PostgreSQL**: используйте SSL, реплики для отказоустойчивости
+3. ☑️ **S3**: AWS S3 или MinIO с резервным копированием
+4. ☑️ **CORS**: ограничьте `allowHost("yourdomain.com")`
+5. ☑️ **HTTPS**: настройте reverse proxy (Nginx/Traefik)
+6. ☑️ **Logging**: ротация логов, отправка в ELK/Loki
+7. ☑️ **Мониторинг**: Prometheus + Grafana
+8. ☑️ **Rate limiting**: защита от злоупотреблений
+
+### Docker Deployment
 
 ```bash
-# Пример Docker Compose для продакшена
+# Собрать Docker образ
+./gradlew buildImage
+
+# Запустить всё через Docker Compose
 docker-compose up -d
 ```
 
+---
+
 ## 🤝 Интеграция с iOS
 
-Для iOS-приложения используйте:
-- **Alamofire** для HTTP-запросов
-- **JWT Decoder** для токенов
-- **Multipart Upload** для аудиофайлов
-- **Whisper ML** локально, затем POST `/records/{id}/transcribe`
+### Рекомендуемый стек:
+- **Alamofire** - HTTP клиент
+- **SwiftJWT** - работа с токенами
+- **Keycloak SDK** - авторизация через web view
+- **Whisper Kit** или **OpenAI Whisper API** - транскрипция
+
+### Flow:
+1. Пользователь открывает приложение
+2. Редирект на Keycloak web view для логина
+3. Получение JWT токена
+4. Все запросы с `Authorization: Bearer <token>`
+5. Запись аудио → POST `/records` (multipart)
+6. Транскрипция → POST `/records/{id}/transcribe`
+7. Просмотр → GET `/records/{id}/pdf`
+
+---
+
+## 📚 Дополнительные материалы
+
+- **API Examples**: `API_EXAMPLES.md`
+- **Keycloak Setup**: `API_REFERENCE_KEYCLOAK.md`
+- **Requirements Checklist**: `CHECKLIST.md`
+- **Refactoring Details**: `REFACTORING_SUMMARY.md`
+- **Swagger UI**: http://localhost:8080/swagger-ui
+
+---
+
+## 📊 Статус проекта
+
+### ✅ Выполненные требования
+
+| # | Требование | Статус |
+|---|-----------|--------|
+| 1 | Удаление модели User (Keycloak only) | ✅ |
+| 2 | Swagger UI | ✅ |
+| 3 | Дефолтные папки (Работа, Учёба, Личное) | ✅ |
+| 4 | Именование файлов: id.m4a | ✅ |
+| 5 | Keycloak web view authorization | ✅ |
+
+### 🏗️ Build Status
+
+```
+BUILD SUCCESSFUL in 9s
+10 actionable tasks: 9 executed, 1 up-to-date
+```
+
+---
 
 ## 📄 Лицензия
 
 MIT License
 
+---
+
 ## 👨‍💻 Автор
 
-Backend разработан для проекта "Smart Dictophone" — iOS-приложение с AI-транскрипцией встреч.
+Backend API для Smart Dictophone - iOS приложение с AI-транскрипцией.
+
+**Tech Stack**: Kotlin + Ktor 3 + PostgreSQL + Keycloak + S3/MinIO
 
 ---
 
-**Статус**: ✅ Готово к разработке и тестированию
-
-This project was created using the [Ktor Project Generator](https://start.ktor.io).
-
-Here are some useful links to get you started:
+## 🔗 Полезные ссылки
 
 - [Ktor Documentation](https://ktor.io/docs/home.html)
-- [Ktor GitHub page](https://github.com/ktorio/ktor)
-- The [Ktor Slack chat](https://app.slack.com/client/T09229ZC6/C0A974TJ9). You'll need to [request an invite](https://surveys.jetbrains.com/s3/kotlin-slack-sign-up) to join.
+- [Keycloak Documentation](https://www.keycloak.org/documentation)
+- [Exposed ORM](https://github.com/JetBrains/Exposed)
+- [AWS S3 SDK](https://aws.amazon.com/sdk-for-kotlin/)
+- [OpenAPI 3.1](https://swagger.io/specification/)
+
+---
+
+**Статус**: ✅ Готов к использованию
+
+<details>
+<summary>📦 Ktor Features (click to expand)</summary>
 
 ## Features
 
@@ -545,12 +572,10 @@ Here's a list of features included in this project:
 | [Content Negotiation](https://start.ktor.io/p/content-negotiation)     | Provides automatic content conversion according to Content-Type and Accept headers |
 | [Exposed](https://start.ktor.io/p/exposed)                             | Adds Exposed database to your application                                          |
 | [Authentication](https://start.ktor.io/p/auth)                         | Provides extension point for handling the Authorization header                     |
-| [Authentication Basic](https://start.ktor.io/p/auth-basic)             | Handles 'Basic' username / password authentication scheme                          |
 | [Authentication JWT](https://start.ktor.io/p/auth-jwt)                 | Handles JSON Web Token (JWT) bearer authentication scheme                          |
+| [Swagger UI](https://ktor.io/docs/swagger-ui.html)                     | Interactive API documentation                                                      |
 
 ## Building & Running
-
-To build or run the project, use one of the following tasks:
 
 | Task                                    | Description                                                          |
 | -----------------------------------------|---------------------------------------------------------------------- |
@@ -562,10 +587,5 @@ To build or run the project, use one of the following tasks:
 | `./gradlew run`                         | Run the server                                                       |
 | `./gradlew runDocker`                   | Run using the local docker image                                     |
 
-If the server starts successfully, you'll see the following output:
-
-```
-2024-12-04 14:32:45.584 [main] INFO  Application - Application started in 0.303 seconds.
-2024-12-04 14:32:45.682 [main] INFO  Application - Responding at http://0.0.0.0:8080
-```
+</details>
 

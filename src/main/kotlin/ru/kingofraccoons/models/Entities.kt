@@ -6,19 +6,13 @@ import org.jetbrains.exposed.sql.javatime.datetime
 import java.time.LocalDateTime
 
 // Database Tables
-object Users : LongIdTable("users") {
-    val email = varchar("email", 255).uniqueIndex()
-    val passwordHash = varchar("password_hash", 255).nullable() // Nullable for Keycloak users
-    val fullName = varchar("full_name", 255)
-    val keycloakUserId = varchar("keycloak_user_id", 255).nullable().uniqueIndex() // Keycloak user ID
-    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
-    val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
-}
+// Users table removed - using Keycloak user IDs directly
 
 object Folders : LongIdTable("folders") {
-    val userId = reference("user_id", Users)
+    val keycloakUserId = varchar("keycloak_user_id", 255).index() // Keycloak user ID
     val name = varchar("name", 255)
     val description = text("description").nullable()
+    val isDefault = bool("is_default").default(false) // Дефолтные папки
     val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
     val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
 }
@@ -49,21 +43,15 @@ object TranscriptionSegments : LongIdTable("transcription_segments") {
 }
 
 // DTOs for API
-@Serializable
-data class User(
-    val id: Long,
-    val email: String,
-    val fullName: String,
-    val createdAt: String,
-    val updatedAt: String
-)
+// User model removed - using Keycloak user info directly
 
 @Serializable
 data class Folder(
     val id: Long,
-    val userId: Long,
+    val keycloakUserId: String,
     val name: String,
     val description: String?,
+    val isDefault: Boolean,
     val createdAt: String,
     val updatedAt: String
 )
@@ -94,33 +82,13 @@ data class TranscriptionSegment(
 )
 
 // Request/Response DTOs
-@Serializable
-data class LoginRequest(
-    val email: String,
-    val password: String
-)
-
-@Serializable
-data class RegisterRequest(
-    val email: String,
-    val password: String,
-    val fullname: String
-)
-
-@Serializable
-data class AuthResponse(
-    val id: Long,
-    val email: String,
-    val fullName: String,
-    val accessToken: String,
-    val refreshToken: String
-)
+// Auth endpoints removed - using Keycloak directly
 
 @Serializable
 data class UserInfo(
-    val id: Long,
-    val email: String,
-    val fullName: String,
+    val keycloakUserId: String,
+    val email: String?,
+    val fullName: String?,
     val countRecords: Int,
     val countMinutes: Int
 )

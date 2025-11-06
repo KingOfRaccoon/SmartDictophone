@@ -10,8 +10,10 @@ import io.ktor.server.auth.jwt.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.openapi.*
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.plugins.swagger.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.runBlocking
@@ -23,6 +25,7 @@ import ru.kingofraccoons.models.ErrorResponse
 import ru.kingofraccoons.routes.*
 import ru.kingofraccoons.services.KeycloakService
 import ru.kingofraccoons.services.PdfService
+import ru.kingofraccoons.services.RabbitMQService
 import ru.kingofraccoons.services.S3Service
 import java.security.KeyFactory
 import java.security.interfaces.RSAPublicKey
@@ -43,9 +46,9 @@ fun Application.module() {
     val keycloakService = KeycloakService(this)
     val s3Service = S3Service(this)
     val pdfService = PdfService()
+    val rabbitMQService = RabbitMQService(this)
     
-    // Initialize DAOs
-    val userDAO = UserDAO()
+    // Initialize DAOs (без userDAO - используем только Keycloak)
     val folderDAO = FolderDAO()
     val recordDAO = RecordDAO()
     val transcriptionDAO = TranscriptionDAO()
@@ -56,6 +59,7 @@ fun Application.module() {
     // Keycloak config
     val keycloakConfig = environment.config.config("keycloak")
     val keycloakServerUrl = keycloakConfig.property("serverUrl").getString()
+    val keycloakPublicUrl = keycloakConfig.propertyOrNull("publicUrl")?.getString() ?: keycloakServerUrl
     val keycloakRealm = keycloakConfig.property("realm").getString()
     
     // Install plugins
@@ -86,8 +90,17 @@ fun Application.module() {
     install(PartialContent)
     
     // Get Keycloak public key for JWT verification
-    val realmPublicKey = runBlocking {
-        keycloakService.getRealmPublicKey().getOrNull()
+    logger.info { "Fetching Keycloak realm public key from $keycloakServerUrl..." }
+    val realmPublicKeyResult = runBlocking {
+        keycloakService.getRealmPublicKey()
+    }
+    
+    val realmPublicKey = realmPublicKeyResult.getOrNull()
+    
+    if (realmPublicKey != null) {
+        logger.info { "Successfully retrieved Keycloak public key (${realmPublicKey.take(50)}...)" }
+    } else {
+        logger.error { "Failed to retrieve Keycloak public key: ${realmPublicKeyResult.exceptionOrNull()?.message}" }
     }
     
     install(Authentication) {
@@ -96,10 +109,11 @@ fun Application.module() {
             
             // Configure JWT verification with Keycloak public key
             if (realmPublicKey != null) {
+                logger.info { "Configuring JWT verifier with issuer: $keycloakPublicUrl/realms/$keycloakRealm" }
                 verifier(
                     JWT
                         .require(Algorithm.RSA256(convertPublicKey(realmPublicKey), null))
-                        .withIssuer("$keycloakServerUrl/realms/$keycloakRealm")
+                        .withIssuer("$keycloakPublicUrl/realms/$keycloakRealm")
                         .build()
                 )
             } else {
@@ -146,13 +160,18 @@ fun Application.module() {
     
     // Configure routing
     routing {
-        authRoutes(keycloakService, userDAO)
-        userRoutes(userDAO, recordDAO)
-    recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, apiKey)
+        // API Documentation - Swagger UI доступен по /swagger-ui
+        swaggerUI(path = "swagger-ui", swaggerFile = "openapi/documentation.yaml")
+        openAPI(path = "openapi", swaggerFile = "openapi/documentation.yaml")
+        
+        // Application routes
+        authRoutes(keycloakService)
+        userRoutes(recordDAO, folderDAO)
+        recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey)
         folderRoutes(folderDAO)
         
         get("/") {
-            call.respondText("Smart Dictophone API v1.0 (Keycloak Integration)", ContentType.Text.Plain)
+            call.respondText("Smart Dictophone API v1.0 (Keycloak Integration)\n\nAPI Documentation: /swagger-ui", ContentType.Text.Plain)
         }
         
         get("/health") {
@@ -164,6 +183,7 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopped) {
         s3Service.close()
         keycloakService.close()
+        rabbitMQService.close()
         logger.info { "Application stopped" }
     }
 }

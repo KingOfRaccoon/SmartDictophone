@@ -11,7 +11,6 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import ru.kingofraccoons.models.Folders
 import ru.kingofraccoons.models.Records
 import ru.kingofraccoons.models.TranscriptionSegments
-import ru.kingofraccoons.models.Users
 
 object DatabaseFactory {
     fun init(config: Application) {
@@ -35,8 +34,10 @@ object DatabaseFactory {
         Database.connect(HikariDataSource(hikariConfig))
 
         // Ensure schema is up-to-date without dropping data.
+        // Users table removed - using Keycloak user IDs directly
         transaction {
-            SchemaUtils.createMissingTablesAndColumns(Users, Folders, Records, TranscriptionSegments)
+            @Suppress("DEPRECATION")
+            SchemaUtils.createMissingTablesAndColumns(Folders, Records, TranscriptionSegments)
         }
     }
 }

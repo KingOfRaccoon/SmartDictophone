@@ -6,6 +6,7 @@ import io.ktor.http.content.forEachPart
 import io.ktor.http.content.streamProvider
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.server.auth.jwt.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -22,6 +23,7 @@ import ru.kingofraccoons.models.Record
 import ru.kingofraccoons.models.RecordCategory
 import ru.kingofraccoons.models.TranscribeRequest
 import ru.kingofraccoons.services.PdfService
+import ru.kingofraccoons.services.RabbitMQService
 import ru.kingofraccoons.services.S3Service
 import java.io.ByteArrayInputStream
 import java.time.LocalDateTime
@@ -29,24 +31,35 @@ import java.time.format.DateTimeFormatter
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * Record management routes
+ * Управление аудиозаписями с поддержкой загрузки, скачивания и транскрипции
+ */
 fun Route.recordRoutes(
     recordDAO: RecordDAO,
     transcriptionDAO: TranscriptionDAO,
     folderDAO: FolderDAO,
     s3Service: S3Service,
     pdfService: PdfService,
+    rabbitMQService: RabbitMQService,
     apiKey: String
 ) {
     authenticate("auth-jwt") {
+        /**
+         * GET /records - получить записи пользователя с поиском и пагинацией
+         */
         get("/records") {
-            val userId = call.requireUserId() ?: return@get
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val search = call.request.queryParameters["search"]
             val folderId = call.request.queryParameters["folderId"]?.toLongOrNull()
             val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 0
             val size = call.request.queryParameters["size"]?.toIntOrNull() ?: 20
             
-            val (records, totalElements) = recordDAO.search(userId, search, folderId, page, size)
+            val (records, totalElements) = recordDAO.search(keycloakUserId, search, folderId, page, size)
             val totalPages = ((totalElements + size - 1) / size).toInt()
             
             call.respond(
@@ -59,14 +72,20 @@ fun Route.recordRoutes(
             )
         }
         
+        /**
+         * POST /records - создать новую запись с загрузкой аудио
+         * Файл сохраняется с именем {recordId}.m4a
+         */
         post("/records") {
-            val userId = call.requireUserId() ?: return@post
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@post call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val multipart = call.receiveMultipart()
             var datetime: LocalDateTime? = null
             var place: String? = null
             var recordBytes: ByteArray? = null
-            var recordFileName: String? = null
             var name: String? = null
             var folderId: Long? = null
             var category: RecordCategory? = null
@@ -92,7 +111,6 @@ fun Route.recordRoutes(
                             @Suppress("DEPRECATION") // Ktor 3 still exposes only the deprecated helper for full channel reads.
                             val bytes = channel.readRemaining().readBytes()
                             recordBytes = bytes
-                            recordFileName = part.originalFileName ?: "recording.m4a"
                         }
                     }
                     else -> {}
@@ -127,7 +145,7 @@ fun Route.recordRoutes(
                 return@post
             }
 
-            if (folder.userId != userId) {
+            if (folder.keycloakUserId != keycloakUserId) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this folder", HttpStatusCode.Forbidden.value)
@@ -144,10 +162,31 @@ fun Route.recordRoutes(
                 }
             }
             
-            // Upload file to S3
+            // Create record first to get ID for filename
+            val record = recordDAO.create(
+                folderId = resolvedFolderId,
+                title = name!!,
+                description = null,
+                datetime = datetime!!,
+                latitude = latitude,
+                longitude = longitude,
+                duration = 0, // Will be updated after processing
+                category = category!!,
+                audioUrl = "" // Temporary, will update after upload
+            )
+            
+            if (record == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ErrorResponse("Failed to create record", 400)
+                )
+                return@post
+            }
+            
+            // Upload file to S3 with record ID as filename
             try {
                 val bytes = recordBytes!!
-                val fileName = recordFileName ?: "recording.m4a"
+                val fileName = "${record.id}.m4a" // Используем ID записи как имя файла
 
                 val audioUrl = s3Service.uploadFile(
                     ByteArrayInputStream(bytes),
@@ -155,30 +194,32 @@ fun Route.recordRoutes(
                     "audio/m4a"
                 )
                 
-                // Create record
-                val record = recordDAO.create(
-                    folderId = resolvedFolderId,
-                    title = name!!,
-                    description = null,
+                // Update record with actual audio URL
+                val updatedRecord = recordDAO.update(
+                    id = record.id,
+                    title = record.title,
+                    description = record.description,
                     datetime = datetime!!,
                     latitude = latitude,
                     longitude = longitude,
-                    duration = 0, // Will be updated after processing
+                    duration = 0,
                     category = category!!,
                     audioUrl = audioUrl
                 )
                 
-                if (record == null) {
-                    call.respond(
-                        HttpStatusCode.BadRequest,
-                        ErrorResponse("Failed to create record", 400)
-                    )
-                    return@post
+                // Send transcription task to RabbitMQ
+                try {
+                    rabbitMQService.sendTranscriptionTask(record.id)
+                    logger.info { "Transcription task sent for record ID: ${record.id}" }
+                } catch (e: Exception) {
+                    logger.warn(e) { "Failed to send transcription task for record ID: ${record.id}, transcription will not be available" }
                 }
                 
-                call.respond(HttpStatusCode.Created, record)
+                call.respond(HttpStatusCode.Created, updatedRecord ?: record)
             } catch (e: Exception) {
                 logger.error(e) { "Failed to upload audio file" }
+                // Clean up created record
+                recordDAO.delete(record.id)
                 call.respond(
                     HttpStatusCode.BadRequest,
                     ErrorResponse("Failed to upload audio file: ${e.message}", 400)
@@ -186,8 +227,14 @@ fun Route.recordRoutes(
             }
         }
         
+        /**
+         * GET /records/{id}/audio - скачать аудиофайл записи
+         */
         get("/records/{id}/audio") {
-            val userId = call.requireUserId() ?: return@get
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val recordId = call.parameters["id"]?.toLongOrNull()
             if (recordId == null) {
@@ -207,7 +254,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!recordBelongsToUser(record, userId, folderDAO)) {
+            if (!recordBelongsToUser(record, keycloakUserId, folderDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -232,8 +279,14 @@ fun Route.recordRoutes(
             )
         }
         
+        /**
+         * GET /records/{id}/pdf - скачать PDF с транскрипцией
+         */
         get("/records/{id}/pdf") {
-            val userId = call.requireUserId() ?: return@get
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val recordId = call.parameters["id"]?.toLongOrNull()
             if (recordId == null) {
@@ -253,7 +306,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!recordBelongsToUser(record, userId, folderDAO)) {
+            if (!recordBelongsToUser(record, keycloakUserId, folderDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -348,15 +401,15 @@ fun Route.recordRoutes(
 }
 
 /**
- * Verifies that the record resides in a folder owned by the current user.
- * Records without a folder are treated as inaccessible for safety reasons.
+ * Проверяет что запись принадлежит текущему пользователю
+ * Записи без папки считаются недоступными
  */
 private suspend fun recordBelongsToUser(
     record: Record,
-    userId: Long,
+    keycloakUserId: String,
     folderDAO: FolderDAO
 ): Boolean {
     val folderId = record.folderId ?: return false
     val folder = folderDAO.findById(folderId) ?: return false
-    return folder.userId == userId
+    return folder.keycloakUserId == keycloakUserId
 }

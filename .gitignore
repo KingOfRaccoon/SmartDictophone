@@ -34,3 +34,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Security ###
+.env
+
+### Docker volumes ###
+rabbitmq/
