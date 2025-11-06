@@ -25,7 +25,9 @@ dependencies {
     implementation(libs.ktor.server.config.yaml)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.partial.content)
-    
+    implementation(libs.ktor.server.openapi)
+    implementation(libs.ktor.server.swagger)
+
     // Ktor Client for Keycloak API calls
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
@@ -51,6 +53,9 @@ dependencies {
     // PDF
     implementation(libs.pdfbox)
     
+    // RabbitMQ
+    implementation("com.rabbitmq:amqp-client:5.20.0")
+
     // Logging
     implementation(libs.logback.classic)
     implementation(libs.kotlin.logging)
@@ -66,4 +71,14 @@ dependencies {
 
     // Swagger UI
     implementation("io.ktor:ktor-server-swagger")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = false
+    }
 }

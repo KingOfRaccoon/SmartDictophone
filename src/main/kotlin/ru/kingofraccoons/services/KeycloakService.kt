@@ -311,9 +311,14 @@ class KeycloakService(config: Application) {
             val response = httpClient.get("$serverUrl/realms/$realm")
             
             if (response.status.isSuccess()) {
-                val realmInfo = response.body<Map<String, Any>>()
-                val publicKey = realmInfo["public_key"] as? String
-                    ?: return Result.failure(Exception("Public key not found in realm info"))
+                val jsonText = response.bodyAsText()
+                val publicKey = jsonText
+                    .substringAfter("\"public_key\":\"")
+                    .substringBefore("\"")
+                
+                if (publicKey.isEmpty() || publicKey == jsonText) {
+                    return Result.failure(Exception("Public key not found in realm info"))
+                }
                 Result.success(publicKey)
             } else {
                 Result.failure(Exception("Failed to get realm info"))

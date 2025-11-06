@@ -6,85 +6,67 @@ import ru.kingofraccoons.models.*
 import ru.kingofraccoons.database.dbQuery
 import java.time.LocalDateTime
 
-class UserDAO {
-    suspend fun create(email: String, passwordHash: String, fullName: String): User? = dbQuery {
-        val insertStatement = Users.insert {
-            it[Users.email] = email
-            it[Users.passwordHash] = passwordHash
-            it[Users.fullName] = fullName
-        }
-        insertStatement.resultedValues?.singleOrNull()?.let(::resultRowToUser)
-    }
-    
-    suspend fun createFromKeycloak(email: String, fullName: String, keycloakUserId: String): User? = dbQuery {
-        val insertStatement = Users.insert {
-            it[Users.email] = email
-            it[Users.passwordHash] = null // No password for Keycloak users
-            it[Users.fullName] = fullName
-            it[Users.keycloakUserId] = keycloakUserId
-        }
-        insertStatement.resultedValues?.singleOrNull()?.let(::resultRowToUser)
-    }
-
-    suspend fun findByEmail(email: String): User? = dbQuery {
-        Users.selectAll().where { Users.email eq email }
-            .map(::resultRowToUser)
-            .singleOrNull()
-    }
-    
-    suspend fun findByKeycloakUserId(keycloakUserId: String): User? = dbQuery {
-        Users.selectAll().where { Users.keycloakUserId eq keycloakUserId }
-            .map(::resultRowToUser)
-            .singleOrNull()
-    }
-
-    suspend fun findById(id: Long): User? = dbQuery {
-        Users.selectAll().where { Users.id eq id }
-            .map(::resultRowToUser)
-            .singleOrNull()
-    }
-
-    suspend fun getPasswordHash(email: String): String? = dbQuery {
-        Users.select(Users.passwordHash)
-            .where { Users.email eq email }
-            .map { it[Users.passwordHash] }
-            .singleOrNull()
-    }
-
-    suspend fun existsByEmail(email: String): Boolean = dbQuery {
-        Users.selectAll().where { Users.email eq email }.count() > 0
-    }
-
-    private fun resultRowToUser(row: ResultRow) = User(
-        id = row[Users.id].value,
-        email = row[Users.email],
-        fullName = row[Users.fullName],
-        createdAt = row[Users.createdAt].toString(),
-        updatedAt = row[Users.updatedAt].toString()
-    )
-}
+// UserDAO removed - using Keycloak user IDs directly
 
 class FolderDAO {
-    suspend fun create(userId: Long, name: String, description: String?): Folder? = dbQuery {
+    /**
+     * Создание папки для пользователя
+     */
+    suspend fun create(keycloakUserId: String, name: String, description: String?, isDefault: Boolean = false): Folder? = dbQuery {
         val insertStatement = Folders.insert {
-            it[Folders.userId] = userId
+            it[Folders.keycloakUserId] = keycloakUserId
             it[Folders.name] = name
             it[Folders.description] = description
+            it[Folders.isDefault] = isDefault
         }
         insertStatement.resultedValues?.singleOrNull()?.let(::resultRowToFolder)
     }
 
-    suspend fun findByUserId(userId: Long): List<Folder> = dbQuery {
-        Folders.selectAll().where { Folders.userId eq userId }
+    /**
+     * Создание дефолтных папок для пользователя при первой авторизации
+     */
+    suspend fun createDefaultFolders(keycloakUserId: String): List<Folder> = dbQuery {
+        val defaultFolders = listOf("Работа", "Учёба", "Личное")
+        defaultFolders.mapNotNull { folderName ->
+            val insertStatement = Folders.insert {
+                it[Folders.keycloakUserId] = keycloakUserId
+                it[name] = folderName
+                it[description] = null
+                it[isDefault] = true
+            }
+            insertStatement.resultedValues?.singleOrNull()?.let(::resultRowToFolder)
+        }
+    }
+
+    /**
+     * Получение всех папок пользователя
+     */
+    suspend fun findByKeycloakUserId(keycloakUserId: String): List<Folder> = dbQuery {
+        Folders.selectAll().where { Folders.keycloakUserId eq keycloakUserId }
             .map(::resultRowToFolder)
     }
 
+    /**
+     * Проверка существования дефолтных папок у пользователя
+     */
+    suspend fun hasDefaultFolders(keycloakUserId: String): Boolean = dbQuery {
+        Folders.selectAll()
+            .where { (Folders.keycloakUserId eq keycloakUserId) and (Folders.isDefault eq true) }
+            .count() >= 3
+    }
+
+    /**
+     * Получение папки по ID
+     */
     suspend fun findById(id: Long): Folder? = dbQuery {
         Folders.selectAll().where { Folders.id eq id }
             .map(::resultRowToFolder)
             .singleOrNull()
     }
 
+    /**
+     * Обновление папки
+     */
     suspend fun update(id: Long, name: String, description: String?): Folder? = dbQuery {
         Folders.update({ Folders.id eq id }) {
             it[Folders.name] = name
@@ -94,15 +76,19 @@ class FolderDAO {
         findById(id)
     }
 
+    /**
+     * Удаление папки
+     */
     suspend fun delete(id: Long): Boolean = dbQuery {
         Folders.deleteWhere { Folders.id eq id } > 0
     }
 
     private fun resultRowToFolder(row: ResultRow) = Folder(
         id = row[Folders.id].value,
-        userId = row[Folders.userId].value,
+        keycloakUserId = row[Folders.keycloakUserId],
         name = row[Folders.name],
         description = row[Folders.description],
+        isDefault = row[Folders.isDefault],
         createdAt = row[Folders.createdAt].toString(),
         updatedAt = row[Folders.updatedAt].toString()
     )
@@ -140,8 +126,11 @@ class RecordDAO {
             .singleOrNull()
     }
 
+    /**
+     * Поиск записей пользователя с фильтрацией
+     */
     suspend fun search(
-        userId: Long,
+        keycloakUserId: String,
         search: String?,
         folderId: Long?,
         page: Int,
@@ -149,7 +138,7 @@ class RecordDAO {
     ): Pair<List<Record>, Long> = dbQuery {
         val query = (Records innerJoin Folders)
             .selectAll()
-            .where { Folders.userId eq userId }
+            .where { Folders.keycloakUserId eq keycloakUserId }
 
         // Apply filters
         search?.let {
@@ -172,21 +161,61 @@ class RecordDAO {
         records to totalCount
     }
 
-    suspend fun countByUserId(userId: Long): Long = dbQuery {
+    /**
+     * Подсчет общего количества записей пользователя
+     */
+    suspend fun countByKeycloakUserId(keycloakUserId: String): Long = dbQuery {
         (Records innerJoin Folders)
             .selectAll()
-            .where { Folders.userId eq userId }
+            .where { Folders.keycloakUserId eq keycloakUserId }
             .count()
     }
 
-    suspend fun sumDurationByUserId(userId: Long): Long = dbQuery {
+    /**
+     * Подсчет общей длительности записей пользователя (в секундах)
+     */
+    suspend fun sumDurationByKeycloakUserId(keycloakUserId: String): Long = dbQuery {
         val result = (Records innerJoin Folders)
             .select(Records.duration.sum())
-            .where { Folders.userId eq userId }
+            .where { Folders.keycloakUserId eq keycloakUserId }
             .map { it[Records.duration.sum()] }
             .firstOrNull()
         
         result?.toLong() ?: 0L
+    }
+
+    /**
+     * Обновление записи
+     */
+    suspend fun update(
+        id: Long,
+        title: String,
+        description: String?,
+        datetime: LocalDateTime,
+        latitude: Float?,
+        longitude: Float?,
+        duration: Int,
+        category: RecordCategory,
+        audioUrl: String
+    ): Record? = dbQuery {
+        Records.update({ Records.id eq id }) {
+            it[Records.title] = title
+            it[Records.description] = description
+            it[Records.datetime] = datetime
+            it[Records.latitude] = latitude
+            it[Records.longitude] = longitude
+            it[Records.duration] = duration
+            it[Records.category] = category
+            it[Records.audioUrl] = audioUrl
+        }
+        findById(id)
+    }
+
+    /**
+     * Удаление записи
+     */
+    suspend fun delete(id: Long): Boolean = dbQuery {
+        Records.deleteWhere { Records.id eq id } > 0
     }
 
     private fun resultRowToRecord(row: ResultRow) = Record(

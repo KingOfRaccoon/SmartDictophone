@@ -76,7 +76,11 @@ services:
       KC_HEALTH_ENABLED: true
     ports:
       - "8090:8090"
-    command: start-dev
+    volumes:
+      - ./keycloak/smart-dictophone-realm.json:/opt/keycloak/data/import/smart-dictophone-realm.json
+    command:
+      - start-dev
+      - --import-realm
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +122,8 @@ volumes:
   postgres_data:
     driver: local
   minio_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 networks:

@@ -1,0 +1,855 @@
+openapi: 3.1.0
+info:
+  title: Smart Dictophone API
+  version: 1.0.0
+  description: |
+    REST API для умного диктофона с автоматической транскрипцией и организацией записей.
+    
+    ## Аутентификация
+    API использует Keycloak для аутентификации. Пользователи должны:
+    1. Зарегистрироваться через Keycloak web view
+    2. Получить JWT токен после успешной аутентификации
+    3. Использовать токен в заголовке `Authorization: Bearer <token>`
+    
+    ## Дефолтные папки
+    При первом запросе к API система автоматически создаёт три папки:
+    - Работа
+    - Учёба
+    - Личное
+
+servers:
+  - url: http://localhost:8080
+    description: Локальная разработка
+  - url: https://api.example.com
+    description: Production сервер
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT токен от Keycloak
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API ключ для сервисных запросов (транскрипция)
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          description: Описание ошибки
+        code:
+          type: integer
+          description: HTTP код ошибки
+    
+    UserInfo:
+      type: object
+      required:
+        - keycloakUserId
+        - countRecords
+        - countMinutes
+      properties:
+        keycloakUserId:
+          type: string
+          description: ID пользователя в Keycloak
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          nullable: true
+          description: Email пользователя
+          example: user@example.com
+        fullName:
+          type: string
+          nullable: true
+          description: Полное имя пользователя
+          example: Иван Иванов
+        countRecords:
+          type: integer
+          description: Количество записей пользователя
+          example: 42
+        countMinutes:
+          type: integer
+          description: Общая длительность записей в минутах
+          example: 120
+    
+    Folder:
+      type: object
+      required:
+        - id
+        - keycloakUserId
+        - name
+        - isDefault
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID папки
+          example: 1
+        keycloakUserId:
+          type: string
+          description: ID владельца папки
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Название папки
+          example: Работа
+        description:
+          type: string
+          nullable: true
+          description: Описание папки
+          example: Рабочие записи
+        isDefault:
+          type: boolean
+          description: Дефолтная папка (создана системой)
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата создания
+        updatedAt:
+          type: string
+          format: date-time
+          description: Дата обновления
+    
+    Record:
+      type: object
+      required:
+        - id
+        - title
+        - datetime
+        - duration
+        - category
+        - audioUrl
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID записи (также используется как имя файла - {id}.m4a)
+          example: 123
+        folderId:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID папки
+          example: 1
+        title:
+          type: string
+          description: Название записи
+          example: Совещание с командой
+        description:
+          type: string
+          nullable: true
+          description: Описание записи
+        datetime:
+          type: string
+          format: date-time
+          description: Дата и время записи
+        latitude:
+          type: number
+          format: float
+          nullable: true
+          description: Широта местоположения
+          example: 55.7558
+        longitude:
+          type: number
+          format: float
+          nullable: true
+          description: Долгота местоположения
+          example: 37.6173
+        duration:
+          type: integer
+          description: Длительность в секундах
+          example: 1800
+        category:
+          type: string
+          enum: [WORK, STUDY, PERSONAL, OTHER]
+          description: Категория записи
+          example: WORK
+        audioUrl:
+          type: string
+          description: URL аудиофайла в S3
+          example: https://s3.amazonaws.com/bucket/123.m4a
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата создания
+        updatedAt:
+          type: string
+          format: date-time
+          description: Дата обновления
+    
+    PaginatedRecords:
+      type: object
+      required:
+        - content
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Record'
+        totalElements:
+          type: integer
+          format: int64
+          description: Общее количество элементов
+          example: 100
+        totalPages:
+          type: integer
+          description: Общее количество страниц
+          example: 5
+
+paths:
+  /:
+    get:
+      summary: Приветственная страница
+      description: Возвращает информацию об API
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Smart Dictophone API v1.0 (Keycloak Integration)\\n\\nAPI Documentation /swagger-ui"
+  
+  /health:
+    get:
+      summary: Health check
+      description: Проверка работоспособности API
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: API работает нормально
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+  
+  /refresh:
+    post:
+      summary: Обновить access token
+      description: Обновляет access token используя refresh token
+      tags:
+        - Authentication
+      security: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+          description: "Bearer {refresh_token}"
+          example: Bearer eyJhbGciOiJSUzI1NiIs...
+      responses:
+        '200':
+          description: Токен успешно обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: Новый access token
+                  refreshToken:
+                    type: string
+                    description: Новый refresh token (или старый)
+        '400':
+          description: Refresh token не передан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный или просроченный refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /loginOnToken:
+    post:
+      summary: Проверить токен и получить информацию о пользователе
+      description: Валидирует JWT токен и возвращает информацию о пользователе
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Токен валидный
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keycloakUserId:
+                    type: string
+                    description: ID пользователя в Keycloak
+                  email:
+                    type: string
+                    nullable: true
+                    description: Email пользователя
+                  fullName:
+                    type: string
+                    nullable: true
+                    description: Полное имя пользователя
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /recordInfo:
+    get:
+      summary: Получить статистику пользователя
+      description: |
+        Возвращает информацию о пользователе и статистику записей.
+        При первом запросе автоматически создаются дефолтные папки.
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Информация о пользователе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /folders:
+    get:
+      summary: Получить все папки
+      description: |
+        Возвращает список всех папок пользователя.
+        При первом запросе создаются дефолтные папки: Работа, Учёба, Личное.
+      tags:
+        - Folders
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список папок
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Folder'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    post:
+      summary: Создать папку
+      description: Создаёт новую папку для текущего пользователя
+      tags:
+        - Folders
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Название папки
+                  example: Новая папка
+                description:
+                  type: string
+                  nullable: true
+                  description: Описание папки
+                  example: Описание новой папки
+      responses:
+        '201':
+          description: Папка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '400':
+          description: Невалидные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /folders/{id}:
+    put:
+      summary: Обновить папку
+      description: Обновляет название и описание папки
+      tags:
+        - Folders
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID папки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Новое название папки
+                description:
+                  type: string
+                  nullable: true
+                  description: Новое описание папки
+      responses:
+        '200':
+          description: Папка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '400':
+          description: Невалидные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на редактирование
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Папка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    delete:
+      summary: Удалить папку
+      description: Удаляет папку пользователя
+      tags:
+        - Folders
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID папки
+      responses:
+        '204':
+          description: Папка удалена
+        '400':
+          description: Невалидный ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на удаление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Папка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /records:
+    get:
+      summary: Получить записи пользователя
+      description: Возвращает записи с поддержкой поиска и пагинации
+      tags:
+        - Records
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Поиск по названию или описанию
+          example: совещание
+        - in: query
+          name: folderId
+          schema:
+            type: integer
+            format: int64
+          description: Фильтр по папке
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 0
+          description: Номер страницы (начиная с 0)
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+          description: Размер страницы
+      responses:
+        '200':
+          description: Список записей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecords'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    post:
+      summary: Создать запись
+      description: |
+        Создаёт новую запись с загрузкой аудиофайла.
+        Файл сохраняется с именем {recordId}.m4a в S3.
+      tags:
+        - Records
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - recordFile
+                - datetime
+                - name
+                - category
+                - folderId
+              properties:
+                recordFile:
+                  type: string
+                  format: binary
+                  description: Аудиофайл (.m4a)
+                datetime:
+                  type: string
+                  format: date-time
+                  description: Дата и время записи (ISO 8601)
+                  example: "2024-01-15T14:30:00"
+                name:
+                  type: string
+                  description: Название записи
+                  example: Совещание
+                folderId:
+                  type: integer
+                  format: int64
+                  description: ID папки
+                  example: 1
+                category:
+                  type: string
+                  enum: [WORK, STUDY, PERSONAL, OTHER]
+                  description: Категория записи
+                  example: WORK
+                place:
+                  type: string
+                  description: Координаты в формате "lat,lon"
+                  example: "55.7558,37.6173"
+      responses:
+        '201':
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '400':
+          description: Невалидные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет доступа к указанной папке
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Папка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /records/{id}/audio:
+    get:
+      summary: Скачать аудиофайл
+      description: Возвращает аудиофайл записи из S3 (имя файла - {id}.m4a)
+      tags:
+        - Records
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID записи
+      responses:
+        '200':
+          description: Аудиофайл
+          content:
+            audio/mp4:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Невалидный ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет доступа к записи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись или файл не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /records/{id}/pdf:
+    get:
+      summary: Скачать PDF с транскрипцией
+      description: Генерирует и возвращает PDF файл с транскрипцией записи
+      tags:
+        - Records
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID записи
+      responses:
+        '200':
+          description: PDF файл
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Невалидный ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет доступа к записи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена или нет транскрипции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ошибка генерации PDF
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /records/{id}/transcribe:
+    post:
+      summary: Сохранить транскрипцию записи
+      description: |
+        Endpoint для внешнего сервиса транскрипции.
+        Защищён API ключом вместо JWT токена.
+      tags:
+        - Records
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID записи
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - segments
+              properties:
+                segments:
+                  type: array
+                  description: Сегменты транскрипции
+                  items:
+                    type: object
+                    required:
+                      - startTime
+                      - endTime
+                      - text
+                    properties:
+                      startTime:
+                        type: number
+                        format: float
+                        description: Время начала сегмента (секунды)
+                        example: 0.0
+                      endTime:
+                        type: number
+                        format: float
+                        description: Время окончания сегмента (секунды)
+                        example: 3.5
+                      text:
+                        type: string
+                        description: Текст сегмента
+                        example: Добрый день коллеги
+      responses:
+        '200':
+          description: Транскрипция сохранена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Transcription saved successfully
+        '400':
+          description: Невалидные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Невалидный API ключ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: System
+    description: Системные эндпоинты
+  - name: Authentication
+    description: Аутентификация через Keycloak
+  - name: User
+    description: Информация о пользователе
+  - name: Folders
+    description: Управление папками
+  - name: Records
+    description: Управление аудиозаписями

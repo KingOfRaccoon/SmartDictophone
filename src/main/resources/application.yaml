@@ -22,6 +22,7 @@ jwt:
 
 keycloak:
   serverUrl: ${KEYCLOAK_SERVER_URL:http://keycloak:8090}
+  publicUrl: ${KEYCLOAK_PUBLIC_URL:http://keycloak:8090}
   realm: ${KEYCLOAK_REALM:master}
   clientId: ${KEYCLOAK_CLIENT_ID:backend}
   clientSecret: ${KEYCLOAK_CLIENT_SECRET:8NaOB00Bo2TLFGJiuHGfHR5CF5uPXjR2}
@@ -37,3 +38,10 @@ s3:
   accessKey: ${S3_ACCESS_KEY:minioadmin}
   secretKey: ${S3_SECRET_KEY:minioadmin}
   bucket: ${S3_BUCKET:smart-dictophone-audio}
+
+rabbitmq:
+  host: ${RABBITMQ_HOST:localhost}
+  port: ${RABBITMQ_PORT:5672}
+  username: ${RABBITMQ_USER:rmuser}
+  password: ${RABBITMQ_PASSWORD:rmpassword}
+  queue: ${RABBITMQ_QUEUE:transcription_queue}

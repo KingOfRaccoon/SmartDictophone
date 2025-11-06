@@ -3,24 +3,47 @@ package ru.kingofraccoons.routes
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.server.auth.jwt.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import ru.kingofraccoons.dao.FolderDAO
 import ru.kingofraccoons.models.*
 
+/**
+ * Folder management routes
+ * Управление папками пользователя с автоматическим созданием дефолтных папок
+ */
 fun Route.folderRoutes(folderDAO: FolderDAO) {
     authenticate("auth-jwt") {
         
+        /**
+         * GET /folders - получить все папки пользователя
+         * Автоматически создаёт дефолтные папки при первом запросе
+         */
         get("/folders") {
-            val userId = call.requireUserId() ?: return@get
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
             
-            val folders = folderDAO.findByUserId(userId)
+            val keycloakUserId = principal.payload.subject
+            
+            // Создаём дефолтные папки если их нет
+            if (!folderDAO.hasDefaultFolders(keycloakUserId)) {
+                folderDAO.createDefaultFolders(keycloakUserId)
+            }
+            
+            val folders = folderDAO.findByKeycloakUserId(keycloakUserId)
             call.respond(HttpStatusCode.OK, folders)
         }
         
+        /**
+         * POST /folders - создать новую папку
+         */
         post("/folders") {
-            val userId = call.requireUserId() ?: return@post
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@post call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
 
             val request = call.receiveOrBadRequest<CreateFolderRequest>() ?: return@post
 
@@ -33,7 +56,7 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             }
 
             val folder = folderDAO.create(
-                userId = userId,
+                keycloakUserId = keycloakUserId,
                 name = request.name,
                 description = request.description
             )
@@ -49,8 +72,14 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             call.respond(HttpStatusCode.Created, folder)
         }
         
+        /**
+         * PUT /folders/{id} - обновить папку
+         */
         put("/folders/{id}") {
-            val userId = call.requireUserId() ?: return@put
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@put call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val folderId = call.parameters["id"]?.toLongOrNull()
             if (folderId == null) {
@@ -60,7 +89,7 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
                 )
             }
             
-            // Check if folder exists and belongs to user
+            // Проверяем что папка существует и принадлежит пользователю
             val existingFolder = folderDAO.findById(folderId)
             if (existingFolder == null) {
                 return@put call.respond(
@@ -69,7 +98,7 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
                 )
             }
             
-            if (existingFolder.userId != userId) {
+            if (existingFolder.keycloakUserId != keycloakUserId) {
                 return@put call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have permission to update this folder", 403)
@@ -103,8 +132,14 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             call.respond(HttpStatusCode.OK, updatedFolder)
         }
         
+        /**
+         * DELETE /folders/{id} - удалить папку
+         */
         delete("/folders/{id}") {
-            val userId = call.requireUserId() ?: return@delete
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@delete call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+            
+            val keycloakUserId = principal.payload.subject
             
             val folderId = call.parameters["id"]?.toLongOrNull()
             if (folderId == null) {
@@ -114,7 +149,7 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
                 )
             }
             
-            // Check if folder exists and belongs to user
+            // Проверяем что папка существует и принадлежит пользователю
             val existingFolder = folderDAO.findById(folderId)
             if (existingFolder == null) {
                 return@delete call.respond(
@@ -123,7 +158,7 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
                 )
             }
             
-            if (existingFolder.userId != userId) {
+            if (existingFolder.keycloakUserId != keycloakUserId) {
                 return@delete call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have permission to delete this folder", 403)

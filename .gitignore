@@ -37,3 +37,6 @@ out/
 
 ### Security ###
 .env
+
+### Docker volumes ###
+rabbitmq/
