@@ -360,15 +360,23 @@ test_s3() {
 
     ((TOTAL++))
     print_test "Checking MinIO bucket access"
-    # Проверяем доступность через REST API вместо mc client
-    MINIO_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
-        --user minioadmin:minioadmin \
-        "http://localhost:9000/" 2>/dev/null)
+    # Проверяем доступность бакета через HEAD запрос (бакет публичный)
+    BUCKET_NAME="smart-dictophone-audio"
+    MINIO_CHECK=$(curl -I -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:9000/${BUCKET_NAME}/" 2>/dev/null)
     
-    if [ "$MINIO_CHECK" = "200" ] || [ "$MINIO_CHECK" = "403" ]; then
-        print_success "MinIO accessible (HTTP $MINIO_CHECK)"
+    if [ "$MINIO_CHECK" = "200" ]; then
+        print_success "MinIO bucket '${BUCKET_NAME}' is accessible and public"
+        ((PASSED++))
+    elif [ "$MINIO_CHECK" = "403" ]; then
+        print_warning "MinIO bucket exists but access denied (check permissions)"
+        ((PASSED++))
+    elif [ "$MINIO_CHECK" = "404" ]; then
+        print_error "MinIO bucket '${BUCKET_NAME}' does not exist - check minio-init logs"
+        ((FAILED++))
     else
-        print_info "MinIO Client not installed, basic check only (HTTP $MINIO_CHECK)"
+        print_error "MinIO bucket check failed (HTTP $MINIO_CHECK)"
+        ((FAILED++))
     fi
 }
 
@@ -424,7 +432,6 @@ main() {
     # Очистка если нужно
     if [ "$CLEANUP_AFTER" = "clean" ]; then
         cleanup "stop"
-    else
     fi
     
     # Итоги

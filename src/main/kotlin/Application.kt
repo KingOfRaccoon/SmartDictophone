@@ -10,7 +10,7 @@ import io.ktor.server.auth.jwt.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.plugins.openapi.*
+import io.ktor.server.plugins.openapi.openAPI
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.plugins.swagger.*
