@@ -1,26 +1,33 @@
 ### Smart Dictophone API Tests
 ### Base URL
-@baseUrl = http://localhost:8080
+@baseUrl = http://localhost:8888
 @contentType = application/json
 
 ### 1. Health Check
 GET {{baseUrl}}/health
+
+###
+### ========== AUTHENTICATION ==========
+###
 
 ### 2. Register New User
 POST {{baseUrl}}/register
 Content-Type: {{contentType}}
 
 {
-  "email": "test@example.com",
+  "username": "testuser",
+  "email": "testuser@example.com",
   "password": "test123456",
-  "fullname": "Test User"
+  "firstName": "Test",
+  "lastName": "User"
 }
 
 > {%
     client.test("Register successful", function() {
         client.assert(response.status === 201, "Response status is not 201");
         client.global.set("accessToken", response.body.accessToken);
-        client.global.set("userId", response.body.id);
+        client.global.set("refreshToken", response.body.refreshToken);
+        client.global.set("userId", response.body.userId);
     });
 %}
 
@@ -29,7 +36,7 @@ POST {{baseUrl}}/login
 Content-Type: {{contentType}}
 
 {
-  "email": "test@example.com",
+  "email": "testuser@example.com",
   "password": "test123456"
 }
 
@@ -41,13 +48,51 @@ Content-Type: {{contentType}}
     });
 %}
 
-### 4. Get User Info (requires auth)
-GET {{baseUrl}}/recordInfo
+### 4. Login (existing user from Keycloak)
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "user@example.com",
+  "password": "user123"
+}
+
+> {%
+    client.test("Login successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.global.set("accessToken", response.body.accessToken);
+        client.global.set("refreshToken", response.body.refreshToken);
+    });
+%}
+
+### 5. Refresh Token
+POST {{baseUrl}}/refresh
+Authorization: Bearer {{refreshToken}}
+
+> {%
+    client.test("Refresh successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.global.set("accessToken", response.body.accessToken);
+    });
+%}
+
+### 6. Login On Token (validate token)
+POST {{baseUrl}}/loginOnToken
 Authorization: Bearer {{accessToken}}
 
-### 5. Login On Token (refresh)
-POST {{baseUrl}}/loginOnToken
-Authorization: Bearer {{refreshToken}}
+> {%
+    client.test("Token is valid", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+%}
+
+###
+### ========== USER INFO ==========
+###
+
+### 7. Get User Info (requires auth)
+GET {{baseUrl}}/recordInfo
+Authorization: Bearer {{accessToken}}
 
 > {%
     client.test("Token refresh successful", function() {

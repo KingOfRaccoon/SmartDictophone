@@ -166,7 +166,7 @@ fun Application.module() {
         
         // Application routes
         authRoutes(keycloakService)
-        userRoutes(recordDAO, folderDAO)
+        userRoutes(recordDAO, folderDAO, keycloakService)
         recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey)
         folderRoutes(folderDAO)
         

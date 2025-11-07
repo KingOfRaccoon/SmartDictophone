@@ -816,11 +816,15 @@
   }
 };
             defs["UserInfo"] = {
-  "required" : [ "countMinutes", "countRecords", "keycloakUserId" ],
+  "required" : [ "countMinutes", "countRecords", "keycloakUserId", "username" ],
   "properties" : {
     "keycloakUserId" : {
       "description" : "ID пользователя в Keycloak",
       "example" : "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "username" : {
+      "description" : "Оригинальный username пользователя (не заменяется на email)",
+      "example" : "cooluser123"
     },
     "email" : {
       "description" : "Email пользователя",
@@ -862,8 +866,14 @@
                     <li data-group="Authentication" data-name="loginOnTokenPost" class="">
                       <a href="#api-Authentication-loginOnTokenPost">loginOnTokenPost</a>
                     </li>
+                    <li data-group="Authentication" data-name="loginPost" class="">
+                      <a href="#api-Authentication-loginPost">loginPost</a>
+                    </li>
                     <li data-group="Authentication" data-name="refreshPost" class="">
                       <a href="#api-Authentication-refreshPost">refreshPost</a>
+                    </li>
+                    <li data-group="Authentication" data-name="registerPost" class="">
+                      <a href="#api-Authentication-registerPost">registerPost</a>
                     </li>
                   <li class="nav-header" data-group="Folders"><a href="#api-Folders">API Methods - Folders</a></li>
                     <li data-group="Folders" data-name="foldersGet" class="">
@@ -922,12 +932,38 @@
             <hr>
             <div><p>REST API для умного диктофона с автоматической транскрипцией и организацией записей.</p>
 <h2>Аутентификация</h2>
-<p>API использует Keycloak для аутентификации. Пользователи должны:</p>
-<ol>
-<li>Зарегистрироваться через Keycloak web view</li>
-<li>Получить JWT токен после успешной аутентификации</li>
-<li>Использовать токен в заголовке <code>Authorization: Bearer &lt;token&gt;</code></li>
-</ol>
+<p>API использует Keycloak для аутентификации. Доступны следующие способы:</p>
+<h3>1. Регистрация через API</h3>
+<pre><code>POST /register
+Content-Type: application/json
+
+{
+  &quot;username&quot;: &quot;john_doe&quot;,
+  &quot;email&quot;: &quot;john@example.com&quot;,
+  &quot;password&quot;: &quot;SecurePass123&quot;,
+  &quot;firstName&quot;: &quot;John&quot;,
+  &quot;lastName&quot;: &quot;Doe&quot;
+}
+</code></pre>
+<h3>2. Логин через API</h3>
+<pre><code>POST /login
+Content-Type: application/json
+
+{
+  &quot;username&quot;: &quot;john_doe&quot;,
+  &quot;password&quot;: &quot;SecurePass123&quot;
+}
+</code></pre>
+<h3>3. Использование токена</h3>
+<p>После успешного логина вы получите JWT токены:</p>
+<ul>
+<li><code>accessToken</code> - используйте в заголовке <code>Authorization: Bearer &lt;token&gt;</code></li>
+<li><code>refreshToken</code> - для обновления access token через <code>/refresh</code></li>
+</ul>
+<h3>4. Обновление токена</h3>
+<pre><code>POST /refresh
+Authorization: Bearer &lt;refresh_token&gt;
+</code></pre>
 <h2>Дефолтные папки</h2>
 <p>При первом запросе к API система автоматически создаёт три папки:</p>
 <ul>
@@ -976,7 +1012,7 @@
                            <pre class="prettyprint"><code class="language-bsh">curl -X POST\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
-"http://localhost:8080/loginOnToken"</code></pre>
+"http://localhost:8888/loginOnToken"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Authentication-loginOnTokenPost-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -1270,6 +1306,443 @@ except ApiException as e:
                         </article>
                       </div>
                       <hr>
+                    <div id="api-Authentication-loginPost">
+                      <article id="api-Authentication-loginPost-0" data-group="User" data-name="loginPost" data-version="0">
+                        <div class="pull-left">
+                          <h1>loginPost</h1>
+                          <p>Логин пользователя</p>
+                        </div>
+                        <div class="pull-right"></div>
+                        <div class="clearfix"></div>
+                        <p></p>
+                        <p class="marked">Аутентификация пользователя через Keycloak и получение JWT токенов.
+
+**ВАЖНО**: Для входа используйте email адрес, так как realm настроен на &quot;Login with email&quot;.
+</p>
+                        <p></p>
+                        <br />
+                        <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/login</span></code></pre>
+                        <p>
+                          <h3>Usage and SDK Samples</h3>
+                        </p>
+                        <ul class="nav nav-tabs nav-tabs-examples">
+                          <li class="active"><a href="#examples-Authentication-loginPost-0-curl">Curl</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-java">Java</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-android">Android</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-loginPost-0-groovy">Groovy</a></li>-->
+                          <li class=""><a href="#examples-Authentication-loginPost-0-objc">Obj-C</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-javascript">JavaScript</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-loginPost-0-angular">Angular</a></li>-->
+                          <li class=""><a href="#examples-Authentication-loginPost-0-csharp">C#</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-php">PHP</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-perl">Perl</a></li>
+                          <li class=""><a href="#examples-Authentication-loginPost-0-python">Python</a></li>
+                        </ul>
+
+                        <div class="tab-content">
+                          <div class="tab-pane active" id="examples-Authentication-loginPost-0-curl">
+                           <pre class="prettyprint"><code class="language-bsh">curl -X POST\
+-H "Accept: application/json"\
+-H "Content-Type: application/json"\
+"http://localhost:8888/login"</code></pre>
+                          </div>
+                          <div class="tab-pane" id="examples-Authentication-loginPost-0-java">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
+import io.swagger.client.auth.*;
+import io.swagger.client.model.*;
+import io.swagger.client.api.AuthenticationApi;
+
+import java.io.File;
+import java.util.*;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Object body = ; // Object | 
+        try {
+            Object result = apiInstance.loginPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#loginPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+
+                          <div class="tab-pane" id="examples-Authentication-loginPost-0-android">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.AuthenticationApi;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Object body = ; // Object | 
+        try {
+            Object result = apiInstance.loginPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#loginPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+  <!--
+  <div class="tab-pane" id="examples-Authentication-loginPost-0-groovy">
+  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+  </div> -->
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-objc">
+                              <pre class="prettyprint"><code class="language-cpp">Object *body = ; // 
+
+AuthenticationApi *apiInstance = [[AuthenticationApi alloc] init];
+
+// Логин пользователя
+[apiInstance loginPostWith:body
+              completionHandler: ^(Object output, NSError* error) {
+                            if (output) {
+                                NSLog(@"%@", output);
+                            }
+                            if (error) {
+                                NSLog(@"Error: %@", error);
+                            }
+                        }];
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-javascript">
+                              <pre class="prettyprint"><code class="language-js">var SmartDictophoneApi = require('smart_dictophone_api');
+
+var api = new SmartDictophoneApi.AuthenticationApi()
+var body = ; // {{Object}} 
+
+var callback = function(error, data, response) {
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('API called successfully. Returned data: ' + data);
+  }
+};
+api.loginPost(body, callback);
+</code></pre>
+                            </div>
+
+                            <!--<div class="tab-pane" id="examples-Authentication-loginPost-0-angular">
+              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+            </div>-->
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-csharp">
+                              <pre class="prettyprint"><code class="language-cs">using System;
+using System.Diagnostics;
+using IO.Swagger.Api;
+using IO.Swagger.Client;
+using IO.Swagger.Model;
+
+namespace Example
+{
+    public class loginPostExample
+    {
+        public void main()
+        {
+
+            var apiInstance = new AuthenticationApi();
+            var body = new Object(); // Object | 
+
+            try
+            {
+                // Логин пользователя
+                Object result = apiInstance.loginPost(body);
+                Debug.WriteLine(result);
+            }
+            catch (Exception e)
+            {
+                Debug.Print("Exception when calling AuthenticationApi.loginPost: " + e.Message );
+            }
+        }
+    }
+}
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-php">
+                              <pre class="prettyprint"><code class="language-php"><&#63;php
+require_once(__DIR__ . '/vendor/autoload.php');
+
+$api_instance = new Swagger\Client\ApiAuthenticationApi();
+$body = ; // Object | 
+
+try {
+    $result = $api_instance->loginPost($body);
+    print_r($result);
+} catch (Exception $e) {
+    echo 'Exception when calling AuthenticationApi->loginPost: ', $e->getMessage(), PHP_EOL;
+}
+?></code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-perl">
+                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
+use WWW::SwaggerClient::Configuration;
+use WWW::SwaggerClient::AuthenticationApi;
+
+my $api_instance = WWW::SwaggerClient::AuthenticationApi->new();
+my $body = WWW::SwaggerClient::Object::Object->new(); # Object | 
+
+eval { 
+    my $result = $api_instance->loginPost(body => $body);
+    print Dumper($result);
+};
+if ($@) {
+    warn "Exception when calling AuthenticationApi->loginPost: $@\n";
+}</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-loginPost-0-python">
+                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
+import time
+import swagger_client
+from swagger_client.rest import ApiException
+from pprint import pprint
+
+# create an instance of the API class
+api_instance = swagger_client.AuthenticationApi()
+body =  # Object | 
+
+try: 
+    # Логин пользователя
+    api_response = api_instance.login_post(body)
+    pprint(api_response)
+except ApiException as e:
+    print("Exception when calling AuthenticationApi->loginPost: %s\n" % e)</code></pre>
+                            </div>
+                          </div>
+
+                          <h2>Parameters</h2>
+
+
+
+                            <div class="methodsubtabletitle">Body parameters</div>
+                            <table id="methodsubtable">
+                              <tr>
+                                <th width="150px">Name</th>
+                                <th>Description</th>
+                              </tr>
+                                <tr><td style="width:150px;">body <span style="color:red;">*</span></td>
+                                <td>
+                                
+                                
+                                <script>
+                                $(document).ready(function() {
+                                  var schemaWrapper = {
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "required" : [ "email", "password" ],
+        "properties" : {
+          "email" : {
+            "description" : "Email пользователя для входа",
+            "format" : "email",
+            "example" : "user@example.com"
+          },
+          "password" : {
+            "description" : "Пароль пользователя",
+            "format" : "password",
+            "example" : "password123"
+          }
+        }
+      }
+    }
+  },
+  "required" : true
+};
+                                  var schema = schemaWrapper.content["application/json"].schema;
+                                  if (schema.$ref != null) {
+                                    schema = defsParser.$refs.get(schema.$ref);
+                                  } else {
+                                    schemaWrapper.components = {};
+                                    schemaWrapper.components.schemas = Object.assign({}, defs);
+                                    $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                      console.log(err);
+                                    });
+                                  }
+                                
+                                  var view = new JSONSchemaView(schema,2,{isBodyParam: true});
+                                  var result = $('#d2e199_loginPost_body');
+                                  result.empty();
+                                  result.append(view.render());
+                                });
+                                </script>
+                                <div id="d2e199_loginPost_body"></div>
+                                </td>
+                                </tr>
+                            </table>
+
+
+
+                          <h2>Responses</h2>
+                            <h3> Status: 200 - Успешная аутентификация </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-loginPost-200-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-loginPost-200-schema">
+                                  <div id='responses-loginPost-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Успешная аутентификация",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "properties" : {
+          "accessToken" : {
+            "description" : "JWT access token для доступа к API"
+          },
+          "refreshToken" : {
+            "description" : "JWT refresh token для обновления access token"
+          },
+          "expiresIn" : {
+            "description" : "Время жизни access token в секундах"
+          },
+          "tokenType" : {
+            "description" : "Тип токена (обычно \"Bearer\")",
+            "example" : "Bearer"
+          }
+        },
+        "x-content-type" : "application/json"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-loginPost-200-schema-data').val(stringify(schema));
+                                        var result = $('#responses-loginPost-200-schema-200');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-loginPost-200-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 400 - Некорректный запрос (отсутствует email или password) </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-loginPost-400-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-loginPost-400-schema">
+                                  <div id='responses-loginPost-400-schema-400' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Некорректный запрос (отсутствует email или password)",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-loginPost-400-schema-data').val(stringify(schema));
+                                        var result = $('#responses-loginPost-400-schema-400');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-loginPost-400-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 401 - Неверный email или пароль </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-loginPost-401-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-loginPost-401-schema">
+                                  <div id='responses-loginPost-401-schema-401' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Неверный email или пароль",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-loginPost-401-schema-data').val(stringify(schema));
+                                        var result = $('#responses-loginPost-401-schema-401');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-loginPost-401-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                        </article>
+                      </div>
+                      <hr>
                     <div id="api-Authentication-refreshPost">
                       <article id="api-Authentication-refreshPost-0" data-group="User" data-name="refreshPost" data-version="0">
                         <div class="pull-left">
@@ -1304,7 +1777,7 @@ except ApiException as e:
                           <div class="tab-pane active" id="examples-Authentication-refreshPost-0-curl">
                            <pre class="prettyprint"><code class="language-bsh">curl -X POST\
 -H "Accept: application/json"\
-"http://localhost:8080/refresh"</code></pre>
+"http://localhost:8888/refresh"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Authentication-refreshPost-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -1670,6 +2143,451 @@ except ApiException as e:
                         </article>
                       </div>
                       <hr>
+                    <div id="api-Authentication-registerPost">
+                      <article id="api-Authentication-registerPost-0" data-group="User" data-name="registerPost" data-version="0">
+                        <div class="pull-left">
+                          <h1>registerPost</h1>
+                          <p>Регистрация нового пользователя</p>
+                        </div>
+                        <div class="pull-right"></div>
+                        <div class="clearfix"></div>
+                        <p></p>
+                        <p class="marked">Создаёт нового пользователя в Keycloak и автоматически выполняет логин</p>
+                        <p></p>
+                        <br />
+                        <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/register</span></code></pre>
+                        <p>
+                          <h3>Usage and SDK Samples</h3>
+                        </p>
+                        <ul class="nav nav-tabs nav-tabs-examples">
+                          <li class="active"><a href="#examples-Authentication-registerPost-0-curl">Curl</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-java">Java</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-android">Android</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-registerPost-0-groovy">Groovy</a></li>-->
+                          <li class=""><a href="#examples-Authentication-registerPost-0-objc">Obj-C</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-javascript">JavaScript</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-registerPost-0-angular">Angular</a></li>-->
+                          <li class=""><a href="#examples-Authentication-registerPost-0-csharp">C#</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-php">PHP</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-perl">Perl</a></li>
+                          <li class=""><a href="#examples-Authentication-registerPost-0-python">Python</a></li>
+                        </ul>
+
+                        <div class="tab-content">
+                          <div class="tab-pane active" id="examples-Authentication-registerPost-0-curl">
+                           <pre class="prettyprint"><code class="language-bsh">curl -X POST\
+-H "Accept: application/json"\
+-H "Content-Type: application/json"\
+"http://localhost:8888/register"</code></pre>
+                          </div>
+                          <div class="tab-pane" id="examples-Authentication-registerPost-0-java">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
+import io.swagger.client.auth.*;
+import io.swagger.client.model.*;
+import io.swagger.client.api.AuthenticationApi;
+
+import java.io.File;
+import java.util.*;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Object body = ; // Object | 
+        try {
+            Object result = apiInstance.registerPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#registerPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+
+                          <div class="tab-pane" id="examples-Authentication-registerPost-0-android">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.AuthenticationApi;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Object body = ; // Object | 
+        try {
+            Object result = apiInstance.registerPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#registerPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+  <!--
+  <div class="tab-pane" id="examples-Authentication-registerPost-0-groovy">
+  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+  </div> -->
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-objc">
+                              <pre class="prettyprint"><code class="language-cpp">Object *body = ; // 
+
+AuthenticationApi *apiInstance = [[AuthenticationApi alloc] init];
+
+// Регистрация нового пользователя
+[apiInstance registerPostWith:body
+              completionHandler: ^(Object output, NSError* error) {
+                            if (output) {
+                                NSLog(@"%@", output);
+                            }
+                            if (error) {
+                                NSLog(@"Error: %@", error);
+                            }
+                        }];
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-javascript">
+                              <pre class="prettyprint"><code class="language-js">var SmartDictophoneApi = require('smart_dictophone_api');
+
+var api = new SmartDictophoneApi.AuthenticationApi()
+var body = ; // {{Object}} 
+
+var callback = function(error, data, response) {
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('API called successfully. Returned data: ' + data);
+  }
+};
+api.registerPost(body, callback);
+</code></pre>
+                            </div>
+
+                            <!--<div class="tab-pane" id="examples-Authentication-registerPost-0-angular">
+              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+            </div>-->
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-csharp">
+                              <pre class="prettyprint"><code class="language-cs">using System;
+using System.Diagnostics;
+using IO.Swagger.Api;
+using IO.Swagger.Client;
+using IO.Swagger.Model;
+
+namespace Example
+{
+    public class registerPostExample
+    {
+        public void main()
+        {
+
+            var apiInstance = new AuthenticationApi();
+            var body = new Object(); // Object | 
+
+            try
+            {
+                // Регистрация нового пользователя
+                Object result = apiInstance.registerPost(body);
+                Debug.WriteLine(result);
+            }
+            catch (Exception e)
+            {
+                Debug.Print("Exception when calling AuthenticationApi.registerPost: " + e.Message );
+            }
+        }
+    }
+}
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-php">
+                              <pre class="prettyprint"><code class="language-php"><&#63;php
+require_once(__DIR__ . '/vendor/autoload.php');
+
+$api_instance = new Swagger\Client\ApiAuthenticationApi();
+$body = ; // Object | 
+
+try {
+    $result = $api_instance->registerPost($body);
+    print_r($result);
+} catch (Exception $e) {
+    echo 'Exception when calling AuthenticationApi->registerPost: ', $e->getMessage(), PHP_EOL;
+}
+?></code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-perl">
+                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
+use WWW::SwaggerClient::Configuration;
+use WWW::SwaggerClient::AuthenticationApi;
+
+my $api_instance = WWW::SwaggerClient::AuthenticationApi->new();
+my $body = WWW::SwaggerClient::Object::Object->new(); # Object | 
+
+eval { 
+    my $result = $api_instance->registerPost(body => $body);
+    print Dumper($result);
+};
+if ($@) {
+    warn "Exception when calling AuthenticationApi->registerPost: $@\n";
+}</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-registerPost-0-python">
+                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
+import time
+import swagger_client
+from swagger_client.rest import ApiException
+from pprint import pprint
+
+# create an instance of the API class
+api_instance = swagger_client.AuthenticationApi()
+body =  # Object | 
+
+try: 
+    # Регистрация нового пользователя
+    api_response = api_instance.register_post(body)
+    pprint(api_response)
+except ApiException as e:
+    print("Exception when calling AuthenticationApi->registerPost: %s\n" % e)</code></pre>
+                            </div>
+                          </div>
+
+                          <h2>Parameters</h2>
+
+
+
+                            <div class="methodsubtabletitle">Body parameters</div>
+                            <table id="methodsubtable">
+                              <tr>
+                                <th width="150px">Name</th>
+                                <th>Description</th>
+                              </tr>
+                                <tr><td style="width:150px;">body <span style="color:red;">*</span></td>
+                                <td>
+                                
+                                
+                                <script>
+                                $(document).ready(function() {
+                                  var schemaWrapper = {
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "required" : [ "email", "password", "username" ],
+        "properties" : {
+          "username" : {
+            "description" : "Имя пользователя (уникальное)",
+            "example" : "john_doe"
+          },
+          "email" : {
+            "description" : "Email адрес",
+            "format" : "email",
+            "example" : "john@example.com"
+          },
+          "password" : {
+            "description" : "Пароль (минимум 6 символов)",
+            "format" : "password",
+            "example" : "SecurePass123"
+          },
+          "firstName" : {
+            "description" : "Имя (опционально)",
+            "example" : "John"
+          },
+          "lastName" : {
+            "description" : "Фамилия (опционально)",
+            "example" : "Doe"
+          }
+        }
+      }
+    }
+  },
+  "required" : true
+};
+                                  var schema = schemaWrapper.content["application/json"].schema;
+                                  if (schema.$ref != null) {
+                                    schema = defsParser.$refs.get(schema.$ref);
+                                  } else {
+                                    schemaWrapper.components = {};
+                                    schemaWrapper.components.schemas = Object.assign({}, defs);
+                                    $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                      console.log(err);
+                                    });
+                                  }
+                                
+                                  var view = new JSONSchemaView(schema,2,{isBodyParam: true});
+                                  var result = $('#d2e199_registerPost_body');
+                                  result.empty();
+                                  result.append(view.render());
+                                });
+                                </script>
+                                <div id="d2e199_registerPost_body"></div>
+                                </td>
+                                </tr>
+                            </table>
+
+
+
+                          <h2>Responses</h2>
+                            <h3> Status: 201 - Пользователь успешно зарегистрирован </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-registerPost-201-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-registerPost-201-schema">
+                                  <div id='responses-registerPost-201-schema-201' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Пользователь успешно зарегистрирован",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "properties" : {
+          "userId" : {
+            "description" : "ID созданного пользователя в Keycloak"
+          },
+          "accessToken" : {
+            "description" : "JWT access token"
+          },
+          "refreshToken" : {
+            "description" : "JWT refresh token"
+          },
+          "expiresIn" : {
+            "description" : "Время жизни access token в секундах"
+          }
+        },
+        "x-content-type" : "application/json"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-registerPost-201-schema-data').val(stringify(schema));
+                                        var result = $('#responses-registerPost-201-schema-201');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-registerPost-201-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 400 - Некорректные данные (невалидный email, короткий пароль и т.д.) </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-registerPost-400-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-registerPost-400-schema">
+                                  <div id='responses-registerPost-400-schema-400' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Некорректные данные (невалидный email, короткий пароль и т.д.)",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-registerPost-400-schema-data').val(stringify(schema));
+                                        var result = $('#responses-registerPost-400-schema-400');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-registerPost-400-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 409 - Пользователь с таким username или email уже существует </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-registerPost-409-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-registerPost-409-schema">
+                                  <div id='responses-registerPost-409-schema-409' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Пользователь с таким username или email уже существует",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-registerPost-409-schema-data').val(stringify(schema));
+                                        var result = $('#responses-registerPost-409-schema-409');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-registerPost-409-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                        </article>
+                      </div>
+                      <hr>
                   </section>
                 <section id="api-Folders">
                   <h1>Folders</h1>
@@ -1710,7 +2628,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
-"http://localhost:8080/folders"</code></pre>
+"http://localhost:8888/folders"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Folders-foldersGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -2020,7 +2938,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X DELETE\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
-"http://localhost:8080/folders/{id}"</code></pre>
+"http://localhost:8888/folders/{id}"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Folders-foldersIdDelete-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -2473,7 +3391,7 @@ except ApiException as e:
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
 -H "Content-Type: application/json"\
-"http://localhost:8080/folders/{id}"</code></pre>
+"http://localhost:8888/folders/{id}"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Folders-foldersIdPut-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -3036,7 +3954,7 @@ except ApiException as e:
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
 -H "Content-Type: application/json"\
-"http://localhost:8080/folders"</code></pre>
+"http://localhost:8888/folders"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Folders-foldersPost-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -3466,7 +4384,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
-"http://localhost:8080/records?search=&folderId=&page=&size="</code></pre>
+"http://localhost:8888/records?search=&folderId=&page=&size="</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Records-recordsGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -3905,7 +4823,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: audio/mp4,application/json"\
-"http://localhost:8080/records/{id}/audio"</code></pre>
+"http://localhost:8888/records/{id}/audio"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Records-recordsIdAudioGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -4398,7 +5316,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/pdf,application/json"\
-"http://localhost:8080/records/{id}/pdf"</code></pre>
+"http://localhost:8888/records/{id}/pdf"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Records-recordsIdPdfGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -4942,7 +5860,7 @@ except ApiException as e:
 -H "X-API-Key: [[apiKey]]"\
 -H "Accept: application/json"\
 -H "Content-Type: application/json"\
-"http://localhost:8080/records/{id}/transcribe"</code></pre>
+"http://localhost:8888/records/{id}/transcribe"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Records-recordsIdTranscribePost-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -5509,7 +6427,7 @@ except ApiException as e:
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
 -H "Content-Type: multipart/form-data"\
-"http://localhost:8080/records"</code></pre>
+"http://localhost:8888/records"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Records-recordsPost-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -6155,7 +7073,7 @@ except ApiException as e:
                           <div class="tab-pane active" id="examples-System-healthGet-0-curl">
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
 -H "Accept: application/json"\
-"http://localhost:8080/health"</code></pre>
+"http://localhost:8888/health"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-System-healthGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -6418,7 +7336,7 @@ except ApiException as e:
                           <div class="tab-pane active" id="examples-System-rootGet-0-curl">
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
 -H "Accept: text/plain"\
-"http://localhost:8080/"</code></pre>
+"http://localhost:8888/"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-System-rootGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -6674,7 +7592,7 @@ except ApiException as e:
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
  -H "Authorization: Bearer [[accessToken]]"\
 -H "Accept: application/json"\
-"http://localhost:8080/recordInfo"</code></pre>
+"http://localhost:8888/recordInfo"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-User-recordInfoGet-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;

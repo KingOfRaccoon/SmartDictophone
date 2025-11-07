@@ -87,6 +87,7 @@ data class TranscriptionSegment(
 @Serializable
 data class UserInfo(
     val keycloakUserId: String,
+    val username: String,  // Оригинальный username пользователя
     val email: String?,
     val fullName: String?,
     val countRecords: Int,

@@ -6,10 +6,43 @@ info:
     REST API для умного диктофона с автоматической транскрипцией и организацией записей.
     
     ## Аутентификация
-    API использует Keycloak для аутентификации. Пользователи должны:
-    1. Зарегистрироваться через Keycloak web view
-    2. Получить JWT токен после успешной аутентификации
-    3. Использовать токен в заголовке `Authorization: Bearer <token>`
+    API использует Keycloak для аутентификации. Доступны следующие способы:
+    
+    ### 1. Регистрация через API
+    ```
+    POST /register
+    Content-Type: application/json
+    
+    {
+      "username": "john_doe",
+      "email": "john@example.com",
+      "password": "SecurePass123",
+      "firstName": "John",
+      "lastName": "Doe"
+    }
+    ```
+    
+    ### 2. Логин через API
+    ```
+    POST /login
+    Content-Type: application/json
+    
+    {
+      "username": "john_doe",
+      "password": "SecurePass123"
+    }
+    ```
+    
+    ### 3. Использование токена
+    После успешного логина вы получите JWT токены:
+    - `accessToken` - используйте в заголовке `Authorization: Bearer <token>`
+    - `refreshToken` - для обновления access token через `/refresh`
+    
+    ### 4. Обновление токена
+    ```
+    POST /refresh
+    Authorization: Bearer <refresh_token>
+    ```
     
     ## Дефолтные папки
     При первом запросе к API система автоматически создаёт три папки:
@@ -18,7 +51,7 @@ info:
     - Личное
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8888
     description: Локальная разработка
   - url: https://api.example.com
     description: Production сервер
@@ -58,6 +91,7 @@ components:
       type: object
       required:
         - keycloakUserId
+        - username
         - countRecords
         - countMinutes
       properties:
@@ -65,6 +99,10 @@ components:
           type: string
           description: ID пользователя в Keycloak
           example: "550e8400-e29b-41d4-a716-446655440000"
+        username:
+          type: string
+          description: Оригинальный username пользователя (не заменяется на email)
+          example: cooluser123
         email:
           type: string
           nullable: true
@@ -251,6 +289,143 @@ paths:
                     type: string
                     example: healthy
   
+  /register:
+    post:
+      summary: Регистрация нового пользователя
+      description: Создаёт нового пользователя в Keycloak и автоматически выполняет логин
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  description: Имя пользователя (уникальное)
+                  example: john_doe
+                email:
+                  type: string
+                  format: email
+                  description: Email адрес
+                  example: john@example.com
+                password:
+                  type: string
+                  format: password
+                  description: Пароль (минимум 6 символов)
+                  example: SecurePass123
+                firstName:
+                  type: string
+                  description: Имя (опционально)
+                  example: John
+                lastName:
+                  type: string
+                  description: Фамилия (опционально)
+                  example: Doe
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    description: ID созданного пользователя в Keycloak
+                  accessToken:
+                    type: string
+                    description: JWT access token
+                  refreshToken:
+                    type: string
+                    description: JWT refresh token
+                  expiresIn:
+                    type: integer
+                    description: Время жизни access token в секундах
+        '400':
+          description: Некорректные данные (невалидный email, короткий пароль и т.д.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Пользователь с таким username или email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /login:
+    post:
+      summary: Логин пользователя
+      description: |
+        Аутентификация пользователя через Keycloak и получение JWT токенов.
+        
+        **ВАЖНО**: Для входа используйте email адрес, так как realm настроен на "Login with email".
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя для входа
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  description: Пароль пользователя
+                  example: password123
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: JWT access token для доступа к API
+                  refreshToken:
+                    type: string
+                    description: JWT refresh token для обновления access token
+                  expiresIn:
+                    type: integer
+                    description: Время жизни access token в секундах
+                  tokenType:
+                    type: string
+                    description: Тип токена (обычно "Bearer")
+                    example: Bearer
+        '400':
+          description: Некорректный запрос (отсутствует email или password)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /refresh:
     post:
       summary: Обновить access token
