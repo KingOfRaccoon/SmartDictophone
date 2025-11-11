@@ -10,7 +10,6 @@ import io.ktor.server.auth.jwt.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.plugins.openapi.openAPI
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.plugins.swagger.*
@@ -22,6 +21,7 @@ import mu.KotlinLogging
 import ru.kingofraccoons.dao.*
 import ru.kingofraccoons.database.DatabaseFactory
 import ru.kingofraccoons.models.ErrorResponse
+import ru.kingofraccoons.openapi.OpenApiGenerator
 import ru.kingofraccoons.routes.*
 import ru.kingofraccoons.services.KeycloakService
 import ru.kingofraccoons.services.PdfService
@@ -109,11 +109,20 @@ fun Application.module() {
             
             // Configure JWT verification with Keycloak public key
             if (realmPublicKey != null) {
-                logger.info { "Configuring JWT verifier with issuer: $keycloakPublicUrl/realms/$keycloakRealm" }
+                // Accept multiple issuers by not setting issuer constraint in verifier
+                // Instead, we'll validate the issuer manually in the validate block
+                logger.info { "Configuring JWT verifier without issuer constraint" }
+                logger.info { "Will accept issuers:" }
+                logger.info { "  - Internal: $keycloakServerUrl/realms/$keycloakRealm" }
+                logger.info { "  - Public: $keycloakPublicUrl/realms/$keycloakRealm" }
+                logger.info { "  - Localhost 8080: http://localhost:8080/realms/$keycloakRealm" }
+                logger.info { "  - Localhost 8090: http://localhost:8090/realms/$keycloakRealm" }
+                
+                // Create verifier without issuer constraint
                 verifier(
                     JWT
                         .require(Algorithm.RSA256(convertPublicKey(realmPublicKey), null))
-                        .withIssuer("$keycloakPublicUrl/realms/$keycloakRealm")
+                        // Don't set issuer here - we'll check it manually
                         .build()
                 )
             } else {
@@ -121,13 +130,37 @@ fun Application.module() {
             }
             
             validate { credential ->
-                // Check if token has required claims (email or preferred_username)
-                val email = credential.payload.getClaim("email")?.asString()
-                    ?: credential.payload.getClaim("preferred_username")?.asString()
-                
-                if (email != null) {
-                    JWTPrincipal(credential.payload)
-                } else {
+                try {
+                    // Check issuer manually to support multiple issuers
+                    val issuer = credential.payload.issuer
+                    val acceptedIssuers = listOf(
+                        "$keycloakServerUrl/realms/$keycloakRealm",
+                        "$keycloakPublicUrl/realms/$keycloakRealm",
+                        "http://localhost:8080/realms/$keycloakRealm",
+                        "http://localhost:8090/realms/$keycloakRealm"
+                    )
+                    
+                    if (!acceptedIssuers.contains(issuer)) {
+                        logger.warn { "Token issuer not accepted: $issuer. Expected one of: $acceptedIssuers" }
+                        return@validate null
+                    }
+                    
+                    // Check if token has required claims
+                    val subject = credential.payload.subject
+                    val email = credential.payload.getClaim("email")?.asString()
+                        ?: credential.payload.getClaim("preferred_username")?.asString()
+                    
+                    logger.debug { "Validating token - Issuer: $issuer, Subject: $subject, Email: $email" }
+                    
+                    if (email != null && subject != null) {
+                        logger.debug { "Token validated successfully for: $email" }
+                        JWTPrincipal(credential.payload)
+                    } else {
+                        logger.warn { "Token validation failed - missing email or subject" }
+                        null
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Token validation error: ${e.message}" }
                     null
                 }
             }
@@ -160,9 +193,58 @@ fun Application.module() {
     
     // Configure routing
     routing {
-        // API Documentation - Swagger UI доступен по /swagger-ui
+        // Swagger UI с автогенерируемой спецификацией
         swaggerUI(path = "swagger-ui", swaggerFile = "openapi/documentation.yaml")
-        openAPI(path = "openapi", swaggerFile = "openapi/documentation.yaml")
+        
+        // Endpoint для динамически генерируемой OpenAPI спецификации
+        get("/openapi.json") {
+            val spec = OpenApiGenerator.generateSpec(
+                title = "Smart Dictophone API",
+                version = "1.0.0",
+                description = """
+                    REST API для умного диктофона с автоматической транскрипцией и организацией записей.
+                    
+                    ## Аутентификация
+                    API использует Keycloak для аутентификации.
+                """.trimIndent(),
+                servers = listOf(
+                    OpenApiGenerator.Server("http://localhost:8888", "Локальная разработка"),
+                    OpenApiGenerator.Server(
+                        environment.config.propertyOrNull("application.publicBaseUrl")?.getString()
+                            ?: "https://api.smartdictophone.com",
+                        "Production"
+                    )
+                ),
+                securitySchemes = mapOf(
+                    "BearerAuth" to OpenApiGenerator.SecurityScheme(
+                        type = "http",
+                        scheme = "bearer",
+                        bearerFormat = "JWT",
+                        description = "JWT токен от Keycloak"
+                    ),
+                    "ApiKeyAuth" to OpenApiGenerator.SecurityScheme(
+                        type = "apiKey",
+                        `in` = "header",
+                        name = "X-API-Key",
+                        description = "API ключ для сервисных запросов"
+                    )
+                )
+            )
+
+            val acceptHeader = call.request.headers[HttpHeaders.Accept]
+            val wantsRawJson = call.request.queryParameters["raw"].isTruthy()
+            val wantsUi = call.request.queryParameters["ui"].isTruthy() ||
+                (!wantsRawJson && acceptHeader.isHtmlPreferred() && !acceptHeader.isJsonPreferred())
+
+            if (wantsUi) {
+                call.respondText(
+                    swaggerUiHtmlTemplate(specUrl = "/openapi.json?raw=true"),
+                    ContentType.Text.Html
+                )
+            } else {
+                call.respond(spec)
+            }
+        }
         
         // Application routes
         authRoutes(keycloakService)
@@ -171,7 +253,13 @@ fun Application.module() {
         folderRoutes(folderDAO)
         
         get("/") {
-            call.respondText("Smart Dictophone API v1.0 (Keycloak Integration)\n\nAPI Documentation: /swagger-ui", ContentType.Text.Plain)
+            call.respondText(
+                "Smart Dictophone API v1.0 (Keycloak Integration)\n\n" +
+                "API Documentation:\n" +
+                "- Swagger UI: /swagger-ui\n" +
+                "- OpenAPI JSON (generated): /openapi.json",
+                ContentType.Text.Plain
+            )
         }
         
         get("/health") {
@@ -202,4 +290,56 @@ private fun convertPublicKey(publicKeyPEM: String): RSAPublicKey {
     val keyFactory = KeyFactory.getInstance("RSA")
     
     return keyFactory.generatePublic(keySpec) as RSAPublicKey
+}
+
+private fun String?.isTruthy(): Boolean {
+    if (this == null) return false
+    return when (lowercase()) {
+        "1", "true", "yes", "on" -> true
+        else -> false
+    }
+}
+
+private fun String?.isHtmlPreferred(): Boolean {
+    return this?.split(',')
+        ?.map { it.substringBefore(';').trim() }
+        ?.any { it.equals(ContentType.Text.Html.toString(), ignoreCase = true) || it.equals("application/xhtml+xml", ignoreCase = true) }
+        ?: false
+}
+
+private fun String?.isJsonPreferred(): Boolean {
+    return this?.split(',')
+        ?.map { it.substringBefore(';').trim() }
+        ?.any { it.equals(ContentType.Application.Json.toString(), ignoreCase = true) || it == "application/json" }
+        ?: false
+}
+
+private fun swaggerUiHtmlTemplate(specUrl: String): String {
+    return """
+        <!DOCTYPE html>
+        <html lang="ru">
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Smart Dictophone API</title>
+            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+            <style>
+                body { margin: 0; padding: 0; }
+            </style>
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script>
+                window.onload = () => {
+                    SwaggerUIBundle({
+                        dom_id: '#swagger-ui',
+                        url: '$specUrl',
+                        layout: 'BaseLayout'
+                    });
+                };
+            </script>
+        </body>
+        </html>
+    """.trimIndent()
 }

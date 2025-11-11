@@ -1,0 +1,21 @@
+# Ignore local configuration and build cache
+.git
+.gitignore
+.idea
+.vscode
+.gradle
+build/
+out/
+bin/
+node_modules/
+.tmp/
+.env
+# Docker artifacts
+Dockerfile
+# Test and docs assets not needed in production image
+docs/
+.playwright-mcp/
+E2E_*
+*.md
+scripts/
+test-*.sh

@@ -9,6 +9,8 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import ru.kingofraccoons.dao.FolderDAO
 import ru.kingofraccoons.models.*
+import ru.kingofraccoons.openapi.ParameterLocation
+import ru.kingofraccoons.openapi.apiDoc
 
 /**
  * Folder management routes
@@ -16,6 +18,30 @@ import ru.kingofraccoons.models.*
  */
 fun Route.folderRoutes(folderDAO: FolderDAO) {
     authenticate("auth-jwt") {
+        apiDoc("GET", "/folders") {
+            summary = "Получить все папки пользователя"
+            description = "Возвращает список всех папок пользователя. При первом запросе автоматически создаёт дефолтные папки (Избранное, Архив, Корзина)."
+            tags = listOf("Folders")
+
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+
+            response(HttpStatusCode.OK, "Список папок", "application/json") {
+                """
+                [
+                  {
+                    "id": 1,
+                    "keycloakUserId": "uuid",
+                    "name": "Избранное",
+                    "description": "Избранные записи",
+                    "createdAt": "2024-01-01T00:00:00Z",
+                    "updatedAt": "2024-01-01T00:00:00Z"
+                  }
+                ]
+                """.trimIndent()
+            }
+
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+        }
         
         /**
          * GET /folders - получить все папки пользователя
@@ -36,6 +62,43 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             call.respond(HttpStatusCode.OK, folders)
         }
         
+        apiDoc("POST", "/folders") {
+            summary = "Создать новую папку"
+            description = "Создаёт новую пользовательскую папку для организации записей."
+            tags = listOf("Folders")
+
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+
+            requestBody(
+                description = "Данные для создания папки",
+                required = true,
+                contentType = "application/json"
+            ) {
+                """
+                {
+                  "name": "Рабочие записи",
+                  "description": "Записи с рабочих встреч"
+                }
+                """.trimIndent()
+            }
+
+            response(HttpStatusCode.Created, "Папка успешно создана", "application/json") {
+                """
+                {
+                  "id": 5,
+                  "keycloakUserId": "uuid",
+                  "name": "Рабочие записи",
+                  "description": "Записи с рабочих встреч",
+                  "createdAt": "2024-01-01T00:00:00Z",
+                  "updatedAt": "2024-01-01T00:00:00Z"
+                }
+                """.trimIndent()
+            }
+
+            response(HttpStatusCode.BadRequest, "Некорректные данные (пустое имя или ошибка создания)")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+        }
+
         /**
          * POST /folders - создать новую папку
          */
@@ -72,6 +135,46 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             call.respond(HttpStatusCode.Created, folder)
         }
         
+        apiDoc("PUT", "/folders/{id}") {
+            summary = "Обновить папку"
+            description = "Обновляет название и/или описание существующей папки пользователя."
+            tags = listOf("Folders")
+
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+            parameter("id", "ID папки для обновления", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            requestBody(
+                description = "Обновлённые данные папки",
+                required = true,
+                contentType = "application/json"
+            ) {
+                """
+                {
+                  "name": "Важные записи",
+                  "description": "Самые важные записи"
+                }
+                """.trimIndent()
+            }
+
+            response(HttpStatusCode.OK, "Папка успешно обновлена", "application/json") {
+                """
+                {
+                  "id": 5,
+                  "keycloakUserId": "uuid",
+                  "name": "Важные записи",
+                  "description": "Самые важные записи",
+                  "createdAt": "2024-01-01T00:00:00Z",
+                  "updatedAt": "2024-01-01T00:10:00Z"
+                }
+                """.trimIndent()
+            }
+
+            response(HttpStatusCode.BadRequest, "Некорректный ID папки или пустое имя")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет прав на обновление этой папки")
+            response(HttpStatusCode.NotFound, "Папка не найдена")
+        }
+
         /**
          * PUT /folders/{id} - обновить папку
          */
@@ -132,6 +235,22 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             call.respond(HttpStatusCode.OK, updatedFolder)
         }
         
+        apiDoc("DELETE", "/folders/{id}") {
+            summary = "Удалить папку"
+            description = "Удаляет папку пользователя. Записи из папки не удаляются, только связь с папкой."
+            tags = listOf("Folders")
+
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+            parameter("id", "ID папки для удаления", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.NoContent, "Папка успешно удалена")
+            response(HttpStatusCode.BadRequest, "Некорректный ID папки")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет прав на удаление этой папки")
+            response(HttpStatusCode.NotFound, "Папка не найдена")
+            response(HttpStatusCode.InternalServerError, "Ошибка при удалении папки")
+        }
+
         /**
          * DELETE /folders/{id} - удалить папку
          */

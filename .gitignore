@@ -40,3 +40,13 @@ out/
 
 ### Docker volumes ###
 rabbitmq/
+
+### Audio files ###
+*.mp3
+*.wav
+*.m4a
+*.aac
+files/*.mp3
+files/*.wav
+files/*.m4a
+files/*.aac

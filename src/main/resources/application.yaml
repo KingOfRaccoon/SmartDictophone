@@ -5,6 +5,9 @@ ktor:
     deployment:
         port: ${PORT:8888}
 
+application:
+  publicBaseUrl: ${PUBLIC_BASE_URL:https://api.smartdictophone.com}
+
 database:
   url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/smart_dictophone}
   driver: ${DATABASE_DRIVER:org.postgresql.Driver}
@@ -46,3 +49,4 @@ rabbitmq:
   username: ${RABBITMQ_USER:rmuser}
   password: ${RABBITMQ_PASSWORD:rmpassword}
   queue: ${RABBITMQ_QUEUE:transcription_queue}
+  durable: ${RABBITMQ_DURABLE:true}

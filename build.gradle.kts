@@ -4,6 +4,11 @@ plugins {
     alias(libs.plugins.kotlin.plugin.serialization)
 }
 
+repositories {
+    mavenCentral()
+    maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots/") }
+}
+
 group = "ru.kingofraccoons"
 version = "0.0.1"
 
@@ -27,6 +32,11 @@ dependencies {
     implementation(libs.ktor.server.partial.content)
     implementation(libs.ktor.server.openapi)
     implementation(libs.ktor.server.swagger)
+    
+    // OpenAPI generation support
+    implementation(libs.swagger.parser)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.snakeyaml)
 
     // Ktor Client for Keycloak API calls
     implementation(libs.ktor.client.core)
@@ -81,4 +91,38 @@ tasks.test {
         events("passed", "skipped", "failed")
         showStandardStreams = false
     }
+}
+
+// Task для генерации OpenAPI спецификации
+tasks.register<JavaExec>("generateOpenApi") {
+    description = "Generates OpenAPI specification from code"
+    group = "documentation"
+    
+    // Зависит от компиляции Kotlin (но не от processResources)
+    dependsOn(tasks.named("compileKotlin"))
+    
+    // Настройка JavaExec задачи
+    mainClass.set("ru.kingofraccoons.openapi.OpenApiGeneratorMainKt")
+    
+    // Используем только compile dependencies + скомпилированные классы
+    // Это избегает циклической зависимости через :classes
+    classpath = sourceSets["main"].compileClasspath + 
+                files(tasks.named("compileKotlin").get().outputs)
+    
+    // Логирование
+    doFirst {
+        println("Generating OpenAPI specification...")
+    }
+    
+    doLast {
+        println("OpenAPI specification generated successfully!")
+    }
+}
+
+// Генерируем OpenAPI перед сборкой ресурсов, но не создаем циклическую зависимость
+tasks.named("processResources") {
+    dependsOn("generateOpenApi")
+    
+    // Явно указываем что processResources НЕ должен зависеть от classes
+    mustRunAfter("compileKotlin")
 }

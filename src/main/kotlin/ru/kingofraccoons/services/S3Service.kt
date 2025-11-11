@@ -34,7 +34,12 @@ class S3Service(config: Application) {
     }
 
     suspend fun uploadFile(inputStream: InputStream, fileName: String, contentType: String): String {
-        val key = "audio/${UUID.randomUUID()}-$fileName"
+        // ML-сервис ожидает файлы в корне bucket по имени {record_id}.m4a
+        val key = if (fileName.matches(Regex("\\d+\\.m4a"))) {
+            fileName  // Для аудио файлов не добавляем префикс
+        } else {
+            "audio/${UUID.randomUUID()}-$fileName"
+        }
         
         try {
             val byteArray = inputStream.use { it.readBytes() }

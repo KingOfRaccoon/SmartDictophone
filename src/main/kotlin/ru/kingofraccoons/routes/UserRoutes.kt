@@ -9,6 +9,8 @@ import io.ktor.server.routing.*
 import ru.kingofraccoons.dao.FolderDAO
 import ru.kingofraccoons.dao.RecordDAO
 import ru.kingofraccoons.models.UserInfo
+import ru.kingofraccoons.openapi.ParameterLocation
+import ru.kingofraccoons.openapi.apiDoc
 import ru.kingofraccoons.services.KeycloakService
 
 /**
@@ -21,6 +23,26 @@ fun Route.userRoutes(
     keycloakService: KeycloakService
 ) {
     authenticate("auth-jwt") {
+        apiDoc("GET", "/recordInfo") {
+            summary = "Получить профиль и статистику пользователя"
+            description = "Возвращает информацию о пользователе из JWT токена Keycloak (ID, username, email, имя) и статистику записей (количество записей и общая продолжительность в минутах). При первом запросе автоматически создаёт дефолтные папки."
+            tags = listOf("Users")
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+            response(HttpStatusCode.OK, "Информация о пользователе и статистика", "application/json") {
+                """
+                {
+                  "keycloakUserId": "uuid",
+                  "username": "john_doe",
+                  "email": "john@example.com",
+                  "fullName": "John Doe",
+                  "countRecords": 42,
+                  "countMinutes": 180
+                }
+                """.trimIndent()
+            }
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+        }
+        
         /**
          * GET /recordInfo - получить статистику пользователя
          * Возвращает информацию из токена и статистику записей

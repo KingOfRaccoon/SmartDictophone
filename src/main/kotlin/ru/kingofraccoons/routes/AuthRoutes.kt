@@ -8,7 +8,11 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import ru.kingofraccoons.models.*
+import ru.kingofraccoons.openapi.ParameterLocation
+import ru.kingofraccoons.openapi.apiDoc
 import ru.kingofraccoons.services.KeycloakService
 
 @Serializable
@@ -48,6 +52,28 @@ data class RegisterResponse(
  * Регистрация, логин и обновление токенов через Keycloak API
  */
 fun Route.authRoutes(keycloakService: KeycloakService) {
+    apiDoc("POST", "/register") {
+        summary = "Регистрация нового пользователя"
+        description = "Создаёт нового пользователя в Keycloak и автоматически выполняет вход"
+        tags = listOf("Authentication")
+
+        requestBody(
+            description = "Данные для регистрации",
+            example = Json.encodeToString(
+                RegisterRequest(
+                    username = "john_doe",
+                    email = "john@example.com",
+                    password = "SecurePass123",
+                    firstName = "John",
+                    lastName = "Doe"
+                )
+            )
+        )
+
+        response(HttpStatusCode.Created, "Пользователь успешно создан и авторизован")
+        response(HttpStatusCode.BadRequest, "Неверный формат данных или отсутствуют обязательные поля")
+        response(HttpStatusCode.Conflict, "Пользователь с таким email или username уже существует")
+    }
     
     /**
      * POST /register - регистрация нового пользователя
@@ -128,6 +154,26 @@ fun Route.authRoutes(keycloakService: KeycloakService) {
         }
     }
     
+    apiDoc("POST", "/login") {
+        summary = "Вход в систему"
+        description = "Аутентификация пользователя через email и пароль"
+        tags = listOf("Authentication")
+
+        requestBody(
+            description = "Учётные данные пользователя",
+            example = Json.encodeToString(
+                LoginRequest(
+                    email = "john@example.com",
+                    password = "SecurePass123"
+                )
+            )
+        )
+
+        response(HttpStatusCode.OK, "Успешная аутентификация, возвращаются JWT токены")
+        response(HttpStatusCode.BadRequest, "Не указан email или пароль")
+        response(HttpStatusCode.Unauthorized, "Неверный email или пароль")
+    }
+    
     /**
      * POST /login - логин пользователя
      */
@@ -163,6 +209,18 @@ fun Route.authRoutes(keycloakService: KeycloakService) {
                 tokenType = tokens.token_type
             )
         )
+    }
+    
+    apiDoc("POST", "/refresh") {
+        summary = "Обновление токена"
+        description = "Получение нового access токена используя refresh токен"
+        tags = listOf("Authentication")
+
+        parameter("Authorization", "Bearer {refresh_token}", required = true, location = ParameterLocation.HEADER)
+
+        response(HttpStatusCode.OK, "Новый access токен успешно получен")
+        response(HttpStatusCode.BadRequest, "Refresh токен не указан")
+        response(HttpStatusCode.Unauthorized, "Невалидный или истёкший refresh токен")
     }
     
     /**
@@ -203,6 +261,23 @@ fun Route.authRoutes(keycloakService: KeycloakService) {
      * POST /loginOnToken - проверить валидность токена и получить информацию о пользователе
      */
     authenticate("auth-jwt") {
+        apiDoc("POST", "/loginOnToken") {
+            summary = "Проверить токен и получить данные пользователя"
+            description = "Проверяет валидность JWT токена и возвращает базовую информацию о пользователе из токена (Keycloak ID, email, имя)."
+            tags = listOf("Authentication")
+            parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
+            response(HttpStatusCode.OK, "Токен валиден, информация о пользователе", "application/json") {
+                """
+                {
+                  "keycloakUserId": "uuid",
+                  "email": "user@example.com",
+                  "fullName": "John Doe"
+                }
+                """.trimIndent()
+            }
+            response(HttpStatusCode.Unauthorized, "Недействительный или отсутствующий токен")
+        }
+        
         post("/loginOnToken") {
             val principal = call.principal<JWTPrincipal>()
                 ?: return@post call.respond(
