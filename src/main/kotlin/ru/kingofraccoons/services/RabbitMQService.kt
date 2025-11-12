@@ -24,12 +24,14 @@ class RabbitMQService(config: Application) {
     private val username = rabbitConfig.property("username").getString()
     private val password = rabbitConfig.property("password").getString()
     private val queueName = rabbitConfig.property("queue").getString()
+    private val durable = rabbitConfig.propertyOrNull("durable")?.getString()?.toBoolean() ?: true
     
     private val factory = ConnectionFactory().apply {
         this.host = this@RabbitMQService.host
         this.port = this@RabbitMQService.port
         this.username = this@RabbitMQService.username
         this.password = this@RabbitMQService.password
+        this.isAutomaticRecoveryEnabled = true
     }
     
     private var connection: Connection? = null
@@ -39,7 +41,7 @@ class RabbitMQService(config: Application) {
         try {
             connection = factory.newConnection()
             channel = connection?.createChannel()
-            channel?.queueDeclare(queueName, true, false, false, null)
+            channel?.queueDeclare(queueName, durable, false, false, null)
             logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to connect to RabbitMQ" }
@@ -52,8 +54,10 @@ class RabbitMQService(config: Application) {
      */
     fun sendTranscriptionTask(recordId: Long) {
         try {
-            val task = TranscriptionTask(record_id = recordId)
-            val message = Json.encodeToString(task)
+            // ML-сервис ожидает просто число, а не JSON объект
+            val message = recordId.toString()
+            
+            logger.info { "Sending message to RabbitMQ: $message" }
             
             channel?.basicPublish(
                 "",

@@ -22,6 +22,8 @@ import ru.kingofraccoons.models.PaginatedResponse
 import ru.kingofraccoons.models.Record
 import ru.kingofraccoons.models.RecordCategory
 import ru.kingofraccoons.models.TranscribeRequest
+import ru.kingofraccoons.openapi.ParameterLocation
+import ru.kingofraccoons.openapi.apiDoc
 import ru.kingofraccoons.services.PdfService
 import ru.kingofraccoons.services.RabbitMQService
 import ru.kingofraccoons.services.S3Service
@@ -45,6 +47,21 @@ fun Route.recordRoutes(
     apiKey: String
 ) {
     authenticate("auth-jwt") {
+        apiDoc("GET", "/records") {
+            summary = "Получить список записей"
+            description = "Возвращает список аудиозаписей пользователя с поддержкой поиска, фильтрации и пагинации"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("search", "Поисковый запрос по названию или описанию", required = false, type = "string", location = ParameterLocation.QUERY)
+            parameter("folderId", "ID папки для фильтрации", required = false, type = "integer", location = ParameterLocation.QUERY)
+            parameter("page", "Номер страницы (начиная с 0)", required = false, type = "integer", location = ParameterLocation.QUERY)
+            parameter("size", "Количество элементов на странице (по умолчанию 20)", required = false, type = "integer", location = ParameterLocation.QUERY)
+
+            response(HttpStatusCode.OK, "Список записей с пагинацией")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+        }
+        
         /**
          * GET /records - получить записи пользователя с поиском и пагинацией
          */
@@ -72,6 +89,37 @@ fun Route.recordRoutes(
             )
         }
         
+        apiDoc("POST", "/records") {
+            summary = "Создать новую запись"
+            description = """
+                Загружает аудиофайл и создаёт новую запись. 
+                Файл сохраняется в S3 с именем {recordId}.m4a.
+                Автоматически отправляет задачу на транскрипцию в RabbitMQ.
+            """.trimIndent()
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+
+            requestBody(
+                description = """
+                    Multipart form data с полями:
+                    - recordFile (file, required): аудиофайл в формате m4a
+                    - name (string, required): название записи
+                    - datetime (string, required): дата и время в формате ISO-8601
+                    - category (string, required): категория (MEETING, LECTURE, INTERVIEW, NOTE, OTHER)
+                    - folderId (integer, required): ID папки
+                    - place (string, optional): место записи (можно передать координаты через запятую)
+                """.trimIndent(),
+                contentType = "multipart/form-data"
+            )
+
+            response(HttpStatusCode.Created, "Запись успешно создана и аудио загружено")
+            response(HttpStatusCode.BadRequest, "Отсутствуют обязательные поля или ошибка загрузки")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.NotFound, "Папка не найдена")
+            response(HttpStatusCode.Forbidden, "Нет доступа к указанной папке")
+        }
+        
         /**
          * POST /records - создать новую запись с загрузкой аудио
          * Файл сохраняется с именем {recordId}.m4a
@@ -92,8 +140,10 @@ fun Route.recordRoutes(
             var latitude: Float? = null
             var longitude: Float? = null
             multipart.forEachPart { part ->
+                logger.debug { "Processing part: name=${part.name}, type=${part::class.simpleName}" }
                 when (part) {
                     is PartData.FormItem -> {
+                        logger.debug { "FormItem: ${part.name} = ${part.value}" }
                         when (part.name) {
                             "datetime" -> datetime = runCatching {
                                 LocalDateTime.parse(part.value, DateTimeFormatter.ISO_DATE_TIME)
@@ -106,11 +156,13 @@ fun Route.recordRoutes(
                         }
                     }
                     is PartData.FileItem -> {
+                        logger.debug { "FileItem: ${part.name}, originalFileName=${part.originalFileName}" }
                         if (part.name == "recordFile") {
                             val channel = part.provider()
                             @Suppress("DEPRECATION") // Ktor 3 still exposes only the deprecated helper for full channel reads.
                             val bytes = channel.readRemaining().readBytes()
                             recordBytes = bytes
+                            logger.debug { "Read ${bytes.size} bytes from recordFile" }
                         }
                     }
                     else -> {}
@@ -118,8 +170,11 @@ fun Route.recordRoutes(
                 part.dispose()
             }
             
+            logger.debug { "Received: datetime=$datetime, name=$name, category=$category, recordBytes size=${recordBytes?.size}, folderId=$folderId" }
+            
             // Validation
             if (datetime == null || name.isNullOrBlank() || category == null || recordBytes == null) {
+                logger.warn { "Validation failed: datetime=$datetime, name=$name, category=$category, recordBytes=${recordBytes != null}" }
                 call.respond(
                     HttpStatusCode.BadRequest,
                     ErrorResponse("Required fields: datetime, name, category, recordFile", 400)
@@ -214,6 +269,15 @@ fun Route.recordRoutes(
                 } catch (e: Exception) {
                     logger.warn(e) { "Failed to send transcription task for record ID: ${record.id}, transcription will not be available" }
                 }
+
+                // TODO: здесь идет коннект к RabbitMQ  и он отправляет в очередь `audio-transcription` в формате
+                // Пример:
+//                async def test_ml_service(audio: int):
+//                await broker.connect()
+//                await broker.publish(
+//                        audio,
+//                queue="audio-transcription")
+
                 
                 call.respond(HttpStatusCode.Created, updatedRecord ?: record)
             } catch (e: Exception) {
@@ -227,6 +291,21 @@ fun Route.recordRoutes(
             }
         }
         
+        apiDoc("GET", "/records/{id}/audio") {
+            summary = "Скачать аудиофайл записи"
+            description = "Возвращает аудиофайл записи в формате m4a"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "Аудиофайл (audio/m4a)")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
         /**
          * GET /records/{id}/audio - скачать аудиофайл записи
          */
@@ -279,6 +358,22 @@ fun Route.recordRoutes(
             )
         }
         
+        apiDoc("GET", "/records/{id}/pdf") {
+            summary = "Скачать PDF с транскрипцией"
+            description = "Генерирует и возвращает PDF файл с транскрипцией записи"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "PDF файл с транскрипцией (application/pdf)")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена или транскрипция отсутствует")
+            response(HttpStatusCode.InternalServerError, "Ошибка генерации PDF")
+        }
+
         /**
          * GET /records/{id}/pdf - скачать PDF с транскрипцией
          */
@@ -352,8 +447,41 @@ fun Route.recordRoutes(
         }
     }
     
-    // API Key protected endpoint
-    post("/records/{id}/transcribe") {
+        // API Key protected endpoint
+        apiDoc("POST", "/records/{id}/transcribe") {
+                summary = "Сохранить результат транскрипции"
+                description = """
+                        Эндпоинт для ML сервиса транскрипции.
+                        Сохраняет сегменты транскрибированного текста для записи.
+                        Требуется API ключ в заголовке X-API-Key.
+                """.trimIndent()
+                tags = listOf("Records", "ML Service")
+
+                parameter("X-API-Key", "API ключ для ML сервиса", required = true, location = ParameterLocation.HEADER)
+                parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+                requestBody(
+                        description = """
+                                JSON с сегментами транскрипции:
+                                {
+                                    "segments": [
+                                        {
+                                            "start": 0.0,
+                                            "end": 5.2,
+                                            "text": "Текст сегмента"
+                                        }
+                                    ]
+                                }
+                        """.trimIndent()
+                )
+
+            response(HttpStatusCode.OK, "Транскрипция успешно сохранена")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи или пустые сегменты")
+            response(HttpStatusCode.Unauthorized, "Неверный API ключ")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        post("/records/{id}/transcribe") {
         val providedApiKey = call.request.headers["X-API-Key"]
         
         if (providedApiKey != apiKey) {

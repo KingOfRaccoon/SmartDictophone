@@ -34,7 +34,9 @@ data class KeycloakUserRepresentation(
     val lastName: String? = null,
     val enabled: Boolean = true,
     val emailVerified: Boolean = false,
-    val credentials: List<KeycloakCredential>? = null
+    val credentials: List<KeycloakCredential>? = null,
+    @kotlinx.serialization.SerialName("attributes")
+    val attributes: Map<String, List<String>>? = null
 )
 
 @Serializable
@@ -58,6 +60,8 @@ class KeycloakService(config: Application) {
     private val realm = keycloakConfig.property("realm").getString()
     private val clientId = keycloakConfig.property("clientId").getString()
     private val clientSecret = keycloakConfig.property("clientSecret").getString()
+    private val frontendClientId = keycloakConfig.propertyOrNull("frontendClientId")?.getString() 
+        ?: "smart-dictophone-frontend"
     private val adminUsername = keycloakConfig.property("adminUsername").getString()
     private val adminPassword = keycloakConfig.property("adminPassword").getString()
     
@@ -79,6 +83,7 @@ class KeycloakService(config: Application) {
     
     /**
      * Authenticate user with Keycloak and get access token
+     * Uses public frontend client (no client secret required)
      */
     suspend fun login(username: String, password: String): Result<KeycloakTokenResponse> {
         return try {
@@ -87,8 +92,8 @@ class KeycloakService(config: Application) {
                 setBody(
                     FormDataContent(
                         Parameters.build {
-                            append("client_id", clientId)
-                            append("client_secret", clientSecret)
+                            append("client_id", frontendClientId)
+                            // No client_secret for public client
                             append("grant_type", "password")
                             append("username", username)
                             append("password", password)
@@ -132,19 +137,18 @@ class KeycloakService(config: Application) {
                 return Result.failure(Exception("Failed to get admin token: ${it.message}"))
             }
             
+            // Create user WITHOUT credentials first
+            // Сохраняем оригинальный username в атрибутах, так как Keycloak может заменить его на email
             val userRepresentation = KeycloakUserRepresentation(
                 username = username,
                 email = email,
                 firstName = firstName,
                 lastName = lastName,
                 enabled = true,
-                emailVerified = false,
-                credentials = listOf(
-                    KeycloakCredential(
-                        type = "password",
-                        value = password,
-                        temporary = false
-                    )
+                emailVerified = true,  // Set to true to allow immediate login
+                credentials = null,  // Don't set credentials in user creation
+                attributes = mapOf(
+                    "original_username" to listOf(username)
                 )
             )
             
@@ -159,7 +163,26 @@ class KeycloakService(config: Application) {
                     // Extract user ID from Location header
                     val location = response.headers["Location"]
                     val userId = location?.substringAfterLast("/") ?: ""
-                    logger.info { "User $username successfully registered in Keycloak with ID: $userId" }
+                    logger.info { "User $username created in Keycloak with ID: $userId" }
+                    
+                    // Now set password separately
+                    val passwordSet = setUserPassword(userId, password, adminToken)
+                    if (passwordSet.isFailure) {
+                        logger.error { "Failed to set password for user $username: ${passwordSet.exceptionOrNull()?.message}" }
+                        return Result.failure(Exception("User created but failed to set password"))
+                    }
+                    
+                    logger.info { "Password set successfully for user $username" }
+                    
+                    // Re-enable user (reset-password может отключить пользователя)
+                    val enableResult = enableUser(userId, adminToken)
+                    if (enableResult.isFailure) {
+                        logger.warn { "Failed to re-enable user $username: ${enableResult.exceptionOrNull()?.message}" }
+                    }
+                    
+                    // Give Keycloak time to propagate changes
+                    kotlinx.coroutines.delay(500)
+                    
                     Result.success(userId)
                 }
                 HttpStatusCode.Conflict -> {
@@ -174,6 +197,63 @@ class KeycloakService(config: Application) {
             }
         } catch (e: Exception) {
             logger.error(e) { "Error during user registration in Keycloak" }
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Set password for a user (helper method)
+     */
+    private suspend fun setUserPassword(userId: String, password: String, adminToken: String): Result<Unit> {
+        return try {
+            val credentialRepresentation = KeycloakCredential(
+                type = "password",
+                value = password,
+                temporary = false
+            )
+            
+            val response = httpClient.put("$serverUrl/admin/realms/$realm/users/$userId/reset-password") {
+                contentType(ContentType.Application.Json)
+                bearerAuth(adminToken)
+                setBody(credentialRepresentation)
+            }
+            
+            logger.debug { "Set password response status: ${response.status}" }
+            
+            if (response.status == HttpStatusCode.NoContent) {
+                Result.success(Unit)
+            } else {
+                val errorText = response.bodyAsText()
+                logger.error { "Failed to set password, status: ${response.status}, body: $errorText" }
+                Result.failure(Exception("Failed to set password: $errorText"))
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Exception while setting password" }
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Enable a user (helper method)
+     */
+    private suspend fun enableUser(userId: String, adminToken: String): Result<Unit> {
+        return try {
+            val response = httpClient.put("$serverUrl/admin/realms/$realm/users/$userId") {
+                contentType(ContentType.Application.Json)
+                bearerAuth(adminToken)
+                setBody(mapOf("enabled" to true))
+            }
+            
+            if (response.status == HttpStatusCode.NoContent) {
+                logger.debug { "User $userId enabled successfully" }
+                Result.success(Unit)
+            } else {
+                val errorText = response.bodyAsText()
+                logger.error { "Failed to enable user, status: ${response.status}, body: $errorText" }
+                Result.failure(Exception("Failed to enable user: $errorText"))
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Exception while enabling user" }
             Result.failure(e)
         }
     }
@@ -232,6 +312,7 @@ class KeycloakService(config: Application) {
     
     /**
      * Refresh access token
+     * Uses public frontend client (no client secret required)
      */
     suspend fun refreshToken(refreshToken: String): Result<KeycloakTokenResponse> {
         return try {
@@ -240,8 +321,8 @@ class KeycloakService(config: Application) {
                 setBody(
                     FormDataContent(
                         Parameters.build {
-                            append("client_id", clientId)
-                            append("client_secret", clientSecret)
+                            append("client_id", frontendClientId)
+                            // No client_secret for public client
                             append("grant_type", "refresh_token")
                             append("refresh_token", refreshToken)
                         }
@@ -327,6 +408,13 @@ class KeycloakService(config: Application) {
             logger.error(e) { "Error getting realm public key" }
             Result.failure(e)
         }
+    }
+    
+    /**
+     * Получить оригинальный username из атрибутов пользователя
+     */
+    fun getOriginalUsername(user: KeycloakUserRepresentation): String {
+        return user.attributes?.get("original_username")?.firstOrNull() ?: user.username
     }
     
     fun close() {
