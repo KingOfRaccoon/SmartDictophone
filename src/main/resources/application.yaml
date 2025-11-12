@@ -48,5 +48,5 @@ rabbitmq:
   port: ${RABBITMQ_PORT:5672}
   username: ${RABBITMQ_USER:rmuser}
   password: ${RABBITMQ_PASSWORD:rmpassword}
-  queue: ${RABBITMQ_QUEUE:transcription_queue}
+  queue: ${RABBITMQ_QUEUE:audio-transcription}
   durable: ${RABBITMQ_DURABLE:true}

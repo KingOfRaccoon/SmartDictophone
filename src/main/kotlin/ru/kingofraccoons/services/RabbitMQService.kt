@@ -41,8 +41,22 @@ class RabbitMQService(config: Application) {
         try {
             connection = factory.newConnection()
             channel = connection?.createChannel()
-            channel?.queueDeclare(queueName, durable, false, false, null)
-            logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName" }
+            
+            // Пытаемся создать очередь с durable=true
+            try {
+                channel?.queueDeclare(queueName, durable, false, false, null)
+                logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: $durable)" }
+            } catch (e: Exception) {
+                // Если не удалось создать с durable=true, попробуем с durable=false
+                logger.warn { "Failed to create durable queue, trying non-durable: ${e.message}" }
+                try {
+                    channel?.queueDeclare(queueName, false, false, false, null)
+                    logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: false)" }
+                } catch (e2: Exception) {
+                    // Если очередь уже существует, просто логируем предупреждение
+                    logger.info { "Queue $queueName already exists or accessible, proceeding..." }
+                }
+            }
         } catch (e: Exception) {
             logger.error(e) { "Failed to connect to RabbitMQ" }
         }

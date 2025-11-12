@@ -19,7 +19,7 @@ MINIO_PORT=9000
 MINIO_CONSOLE_PORT=9001
 RABBITMQ_PORT=5672
 RABBITMQ_MGMT_PORT=15672
-API_PORT=8080
+API_PORT=8888
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}  Smart Dictophone Health Check${NC}"
@@ -95,11 +95,11 @@ FAILED=0
 echo -e "${BLUE}1. Checking Docker Containers...${NC}"
 echo ""
 
-check_container "smart-dictophone-db" "PostgreSQL" || ((FAILED++))
-check_container "smart-dictophone-keycloak" "Keycloak" || ((FAILED++))
-check_container "smart-dictophone-minio" "MinIO" || ((FAILED++))
-check_container "smart-dictophone-rabbitmq" "RabbitMQ" || ((FAILED++))
-check_container "smart-dictophone-api" "Backend API" || ((FAILED++))
+check_container "smart_dictophone-postgres-1" "PostgreSQL" || ((FAILED++))
+check_container "smart_dictophone-keycloak-1" "Keycloak" || ((FAILED++))
+check_container "smart_dictophone-minio-1" "MinIO" || ((FAILED++))
+check_container "smart_dictophone-rabbitmq-1" "RabbitMQ" || ((FAILED++))
+check_container "smart_dictophone-api-1" "Backend API" || ((FAILED++))
 
 echo ""
 echo -e "${BLUE}2. Checking Network Ports...${NC}"
@@ -127,10 +127,10 @@ check_http "http://localhost:9000/minio/health/live" "MinIO Health" || ((FAILED+
 check_http "http://localhost:15672" "RabbitMQ Management UI" || ((FAILED++))
 
 # Backend API
-check_http "http://localhost:8080" "Backend API Root" || ((FAILED++))
+check_http "http://localhost:8888" "Backend API Root" || ((FAILED++))
 
 # Check for health endpoint (optional)
-if check_http "http://localhost:8080/health" "Health Endpoint" 200 2>/dev/null; then
+if check_http "http://localhost:8888/health" "Health Endpoint" 200 2>/dev/null; then
     :  # Success, do nothing
 else
     echo -e "${YELLOW}⚠${NC} Health Endpoint - ${YELLOW}NOT CONFIGURED${NC}"
@@ -141,7 +141,7 @@ echo -e "${BLUE}4. Checking Service Connectivity...${NC}"
 echo ""
 
 # Check PostgreSQL from API logs (connection happens at startup)
-if docker logs smart-dictophone-api 2>&1 | grep -q "Exposed -"; then
+if docker logs smart_dictophone-api-1 2>&1 | grep -q "Exposed -"; then
     echo -e "${GREEN}✓${NC} API → PostgreSQL - ${GREEN}CONNECTED${NC}"
 else
     echo -e "${RED}✗${NC} API → PostgreSQL - ${RED}DISCONNECTED${NC}"
@@ -149,7 +149,7 @@ else
 fi
 
 # Check Keycloak from API container
-if docker exec smart-dictophone-api sh -c "curl -sf http://keycloak:8080/realms/smart-dictophone > /dev/null" 2>/dev/null; then
+if docker exec smart_dictophone-api-1 sh -c "curl -sf http://keycloak:8080/realms/smart-dictophone > /dev/null" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} API → Keycloak - ${GREEN}CONNECTED${NC}"
 else
     echo -e "${RED}✗${NC} API → Keycloak - ${RED}DISCONNECTED${NC}"
@@ -157,7 +157,7 @@ else
 fi
 
 # Check MinIO from API container
-if docker exec smart-dictophone-api sh -c "curl -sf http://minio:9000/minio/health/live > /dev/null" 2>/dev/null; then
+if docker exec smart_dictophone-api-1 sh -c "curl -sf http://minio:9000/minio/health/live > /dev/null" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} API → MinIO - ${GREEN}CONNECTED${NC}"
 else
     echo -e "${RED}✗${NC} API → MinIO - ${RED}DISCONNECTED${NC}"
@@ -165,7 +165,7 @@ else
 fi
 
 # Check RabbitMQ from API logs (connection happens at startup)
-if docker logs smart-dictophone-api 2>&1 | grep -q "Connected to RabbitMQ"; then
+if docker logs smart_dictophone-api-1 2>&1 | grep -q "Connected to RabbitMQ"; then
     echo -e "${GREEN}✓${NC} API → RabbitMQ - ${GREEN}CONNECTED${NC}"
 else
     echo -e "${RED}✗${NC} API → RabbitMQ - ${RED}DISCONNECTED${NC}"
@@ -177,12 +177,12 @@ echo -e "${BLUE}5. Checking RabbitMQ Queue...${NC}"
 echo ""
 
 # Check if transcription queue exists
-QUEUE_INFO=$(docker exec smart-dictophone-rabbitmq rabbitmqctl list_queues name 2>/dev/null | grep "transcription_queue" || echo "")
+QUEUE_INFO=$(docker exec smart_dictophone-rabbitmq-1 rabbitmqctl list_queues name 2>/dev/null | grep "audio-transcription" || echo "")
 
 if [ -n "$QUEUE_INFO" ]; then
-    echo -e "${GREEN}✓${NC} RabbitMQ Queue 'transcription_queue' - ${GREEN}EXISTS${NC}"
+    echo -e "${GREEN}✓${NC} RabbitMQ Queue 'audio-transcription' - ${GREEN}EXISTS${NC}"
 else
-    echo -e "${YELLOW}⚠${NC} RabbitMQ Queue 'transcription_queue' - ${YELLOW}NOT FOUND${NC}"
+    echo -e "${YELLOW}⚠${NC} RabbitMQ Queue 'audio-transcription' - ${YELLOW}NOT FOUND${NC}"
     echo -e "  ${YELLOW}Note: Queue will be created on first use${NC}"
 fi
 
@@ -191,14 +191,14 @@ echo -e "${BLUE}6. Database Tables Check...${NC}"
 echo ""
 
 # Check if database tables exist
-TABLES=$(docker exec smart-dictophone-db psql -U postgres -d smart_dictophone -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null | tr -d ' ')
+TABLES=$(docker exec smart_dictophone-postgres-1 psql -U postgres -d smart_dictophone -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null | tr -d ' ')
 
 if [ "$TABLES" -gt 0 ]; then
     echo -e "${GREEN}✓${NC} Database tables - ${GREEN}$TABLES tables found${NC}"
     
     # List main tables
     echo -e "  ${BLUE}Main tables:${NC}"
-    docker exec smart-dictophone-db psql -U postgres -d smart_dictophone -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;" 2>/dev/null | while read -r table; do
+    docker exec smart_dictophone-postgres-1 psql -U postgres -d smart_dictophone -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;" 2>/dev/null | while read -r table; do
         if [ -n "$table" ]; then
             echo -e "    - ${table}"
         fi
@@ -212,7 +212,7 @@ echo -e "${BLUE}7. MinIO Bucket Check...${NC}"
 echo ""
 
 # Check if MinIO bucket exists
-if docker exec smart-dictophone-minio sh -c "mc alias set local http://localhost:9000 minioadmin minioadmin > /dev/null 2>&1 && mc ls local/smart-dictophone-audio > /dev/null 2>&1" 2>/dev/null; then
+if docker exec smart_dictophone-minio-1 sh -c "mc alias set local http://localhost:9000 minioadmin minioadmin > /dev/null 2>&1 && mc ls local/smart-dictophone-audio > /dev/null 2>&1" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} MinIO bucket 'smart-dictophone-audio' - ${GREEN}EXISTS${NC}"
 else
     echo -e "${RED}✗${NC} MinIO bucket 'smart-dictophone-audio' - ${RED}NOT FOUND${NC}"
@@ -227,8 +227,8 @@ if [ $FAILED -eq 0 ]; then
     echo -e "${GREEN}✓ All checks passed! System is healthy.${NC}"
     echo ""
     echo -e "${BLUE}Quick Links:${NC}"
-    echo -e "  • Backend API:         ${BLUE}http://localhost:8080${NC}"
-    echo -e "  • Health Check:        ${BLUE}http://localhost:8080/health${NC}"
+    echo -e "  • Backend API:         ${BLUE}http://localhost:8888${NC}"
+    echo -e "  • Health Check:        ${BLUE}http://localhost:8888/health${NC}"
     echo -e "  • Keycloak Admin:      ${BLUE}http://localhost:8090${NC}"
     echo -e "  • MinIO Console:       ${BLUE}http://localhost:9001${NC}"
     echo -e "  • RabbitMQ Management: ${BLUE}http://localhost:15672${NC}"
