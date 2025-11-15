@@ -49,4 +49,4 @@ rabbitmq:
   username: ${RABBITMQ_USER:rmuser}
   password: ${RABBITMQ_PASSWORD:rmpassword}
   queue: ${RABBITMQ_QUEUE:audio-transcription}
-  durable: ${RABBITMQ_DURABLE:true}
+  durable: ${RABBITMQ_DURABLE:false}

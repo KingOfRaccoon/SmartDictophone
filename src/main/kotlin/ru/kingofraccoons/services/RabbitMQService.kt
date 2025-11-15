@@ -24,7 +24,7 @@ class RabbitMQService(config: Application) {
     private val username = rabbitConfig.property("username").getString()
     private val password = rabbitConfig.property("password").getString()
     private val queueName = rabbitConfig.property("queue").getString()
-    private val durable = rabbitConfig.propertyOrNull("durable")?.getString()?.toBoolean() ?: true
+    private val durable = rabbitConfig.propertyOrNull("durable")?.getString()?.toBoolean() ?: false
     
     private val factory = ConnectionFactory().apply {
         this.host = this@RabbitMQService.host
@@ -42,18 +42,20 @@ class RabbitMQService(config: Application) {
             connection = factory.newConnection()
             channel = connection?.createChannel()
             
-            // Пытаемся создать очередь с durable=true
             try {
                 channel?.queueDeclare(queueName, durable, false, false, null)
                 logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: $durable)" }
             } catch (e: Exception) {
-                // Если не удалось создать с durable=true, попробуем с durable=false
-                logger.warn { "Failed to create durable queue, trying non-durable: ${e.message}" }
-                try {
-                    channel?.queueDeclare(queueName, false, false, false, null)
-                    logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: false)" }
-                } catch (e2: Exception) {
-                    // Если очередь уже существует, просто логируем предупреждение
+                if (durable) {
+                    // Если не удалось создать durable очередь, пробуем без нее, чтобы API не падал на старте
+                    logger.warn { "Failed to create durable queue, trying non-durable: ${e.message}" }
+                    try {
+                        channel?.queueDeclare(queueName, false, false, false, null)
+                        logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: false)" }
+                    } catch (e2: Exception) {
+                        logger.info { "Queue $queueName already exists or accessible, proceeding..." }
+                    }
+                } else {
                     logger.info { "Queue $queueName already exists or accessible, proceeding..." }
                 }
             }

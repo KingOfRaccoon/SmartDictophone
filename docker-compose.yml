@@ -18,7 +18,7 @@ services:
       RABBITMQ_USER: rmuser
       RABBITMQ_PASSWORD: rmpassword
       RABBITMQ_QUEUE: audio-transcription
-      RABBITMQ_DURABLE: true
+      RABBITMQ_DURABLE: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,15 +141,20 @@ services:
 
   # RabbitMQ queue initialization
   rabbitmq-init:
-    image: rabbitmq:4.1-management
+    image: python:3.12-alpine
     depends_on:
       rabbitmq:
         condition: service_healthy
-    command: >
-      bash -c "
-      rabbitmqadmin -H rabbitmq -u rmuser -p rmpassword declare queue name=audio-transcription durable=true || true
-      echo 'RabbitMQ queue initialization complete'
-      "
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        apk add --no-cache curl >/dev/null
+        curl -s -u rmuser:rmpassword -o /tmp/rabbitmqadmin http://rabbitmq:15672/cli/rabbitmqadmin
+        chmod +x /tmp/rabbitmqadmin
+        /tmp/rabbitmqadmin --host rabbitmq --port 15672 --username rmuser --password rmpassword --vhost=/ declare queue name=audio-transcription durable=false
+        echo 'RabbitMQ queue initialization complete'
 
   ml-service:
     image: voice-recorder-ml-service:latest
