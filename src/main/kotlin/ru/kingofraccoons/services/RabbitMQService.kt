@@ -5,8 +5,6 @@ import com.rabbitmq.client.Connection
 import com.rabbitmq.client.Channel
 import io.ktor.server.application.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 
 private val logger = KotlinLogging.logger {}
@@ -24,7 +22,6 @@ class RabbitMQService(config: Application) {
     private val username = rabbitConfig.property("username").getString()
     private val password = rabbitConfig.property("password").getString()
     private val queueName = rabbitConfig.property("queue").getString()
-    private val durable = rabbitConfig.propertyOrNull("durable")?.getString()?.toBoolean() ?: false
     
     private val factory = ConnectionFactory().apply {
         this.host = this@RabbitMQService.host
@@ -36,29 +33,13 @@ class RabbitMQService(config: Application) {
     
     private var connection: Connection? = null
     private var channel: Channel? = null
-    
+
     init {
         try {
             connection = factory.newConnection()
             channel = connection?.createChannel()
-            
-            try {
-                channel?.queueDeclare(queueName, durable, false, false, null)
-                logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: $durable)" }
-            } catch (e: Exception) {
-                if (durable) {
-                    // Если не удалось создать durable очередь, пробуем без нее, чтобы API не падал на старте
-                    logger.warn { "Failed to create durable queue, trying non-durable: ${e.message}" }
-                    try {
-                        channel?.queueDeclare(queueName, false, false, false, null)
-                        logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName (durable: false)" }
-                    } catch (e2: Exception) {
-                        logger.info { "Queue $queueName already exists or accessible, proceeding..." }
-                    }
-                } else {
-                    logger.info { "Queue $queueName already exists or accessible, proceeding..." }
-                }
-            }
+
+            logger.info { "Connected to RabbitMQ at $host:$port, queue: $queueName" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to connect to RabbitMQ" }
         }

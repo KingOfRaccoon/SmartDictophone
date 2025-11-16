@@ -3,14 +3,11 @@ package ru.kingofraccoons.routes
 import io.ktor.http.*
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
-import io.ktor.http.content.streamProvider
-import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.utils.io.*
 import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.readRemaining
 import mu.KotlinLogging
@@ -269,16 +266,6 @@ fun Route.recordRoutes(
                 } catch (e: Exception) {
                     logger.warn(e) { "Failed to send transcription task for record ID: ${record.id}, transcription will not be available" }
                 }
-
-                // TODO: здесь идет коннект к RabbitMQ  и он отправляет в очередь `audio-transcription` в формате
-                // Пример:
-//                async def test_ml_service(audio: int):
-//                await broker.connect()
-//                await broker.publish(
-//                        audio,
-//                queue="audio-transcription")
-
-                
                 call.respond(HttpStatusCode.Created, updatedRecord ?: record)
             } catch (e: Exception) {
                 logger.error(e) { "Failed to upload audio file" }
