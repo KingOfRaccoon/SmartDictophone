@@ -60,7 +60,7 @@ class KeycloakService(config: Application) {
     private val realm = keycloakConfig.property("realm").getString()
     private val clientId = keycloakConfig.property("clientId").getString()
     private val clientSecret = keycloakConfig.property("clientSecret").getString()
-    private val frontendClientId = keycloakConfig.propertyOrNull("frontendClientId")?.getString() 
+    private val frontendClientId = keycloakConfig.propertyOrNull("frontendClientId")?.getString()
         ?: "smart-dictophone-frontend"
     private val adminUsername = keycloakConfig.property("adminUsername").getString()
     private val adminPassword = keycloakConfig.property("adminPassword").getString()
