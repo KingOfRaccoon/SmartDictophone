@@ -39,7 +39,9 @@ out/
 .env
 
 ### Docker volumes ###
-rabbitmq/
+rabbitmq_data/
+postgres_data/
+minio_data/
 
 ### Audio files ###
 *.mp3
