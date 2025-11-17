@@ -2,6 +2,7 @@ package ru.kingofraccoons.services
 
 import aws.sdk.kotlin.runtime.auth.credentials.StaticCredentialsProvider
 import aws.sdk.kotlin.services.s3.S3Client
+import aws.sdk.kotlin.services.s3.model.DeleteObjectRequest
 import aws.sdk.kotlin.services.s3.model.GetObjectRequest
 import aws.sdk.kotlin.services.s3.model.PutObjectRequest
 import aws.smithy.kotlin.runtime.content.ByteStream
@@ -10,6 +11,7 @@ import aws.smithy.kotlin.runtime.net.url.Url
 import io.ktor.server.application.*
 import mu.KotlinLogging
 import java.io.InputStream
+import java.net.URL
 import java.util.*
 
 private val logger = KotlinLogging.logger {}
@@ -60,22 +62,59 @@ class S3Service(config: Application) {
     }
 
     suspend fun downloadFile(url: String): ByteArray? {
-        return try {
-            val key = url.substringAfter("$bucket/")
-            
-            s3Client.getObject(GetObjectRequest {
-                this.bucket = this@S3Service.bucket
-                this.key = key
-            }) { response ->
-                response.body?.toByteArray()
+        val key = url.substringAfter("$bucket/", missingDelimiterValue = "")
+        val s3Bytes = try {
+            if (key.isBlank()) {
+                null
+            } else {
+                s3Client.getObject(GetObjectRequest {
+                    this.bucket = this@S3Service.bucket
+                    this.key = key
+                }) { response ->
+                    response.body?.toByteArray()
+                }
             }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to download file from: $url" }
+            logger.warn(e) { "Failed to download file from S3 for key=$key, falling back to HTTP" }
             null
+        }
+
+        if (s3Bytes != null) {
+            return s3Bytes
+        }
+
+        return downloadViaHttp(url)
+    }
+
+    suspend fun deleteFileByUrl(url: String) {
+        val key = url.substringAfter("$bucket/", missingDelimiterValue = "")
+        if (key.isBlank()) {
+            logger.warn { "Cannot delete S3 object for empty key parsed from url=$url" }
+            return
+        }
+
+        try {
+            s3Client.deleteObject(DeleteObjectRequest {
+                this.bucket = this@S3Service.bucket
+                this.key = key
+            })
+            logger.info { "Deleted S3 object: $key" }
+        } catch (e: Exception) {
+            logger.warn(e) { "Failed to delete file from: $url" }
         }
     }
 
     fun close() {
         s3Client.close()
+    }
+
+    private fun downloadViaHttp(url: String): ByteArray? {
+        return try {
+            logger.info { "Downloading file via HTTP fallback: $url" }
+            URL(url).openStream().use { it.readBytes() }
+        } catch (e: Exception) {
+            logger.error(e) { "HTTP fallback download failed for: $url" }
+            null
+        }
     }
 }

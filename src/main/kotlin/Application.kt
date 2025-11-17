@@ -12,7 +12,7 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.plugins.statuspages.*
-import io.ktor.server.plugins.swagger.*
+import io.ktor.server.request.path
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.runBlocking
@@ -85,6 +85,7 @@ fun Application.module() {
     
     install(CallLogging) {
         level = org.slf4j.event.Level.INFO
+        filter { call -> call.request.path() != "/health" }
     }
     
     install(PartialContent)
@@ -193,8 +194,13 @@ fun Application.module() {
     
     // Configure routing
     routing {
-        // Swagger UI с автогенерируемой спецификацией
-        swaggerUI(path = "swagger-ui", swaggerFile = "openapi/documentation.yaml")
+        // Swagger UI поверх актуальной OpenAPI спецификации
+        get("/swagger-ui") {
+            call.respondText(
+                swaggerUiHtmlTemplate(specUrl = "/openapi.json?raw=true"),
+                ContentType.Text.Html
+            )
+        }
         
         // Endpoint для динамически генерируемой OpenAPI спецификации
         get("/openapi.json") {
@@ -250,7 +256,7 @@ fun Application.module() {
         authRoutes(keycloakService)
         userRoutes(recordDAO, folderDAO, keycloakService)
         recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey)
-        folderRoutes(folderDAO)
+        folderRoutes(folderDAO, recordDAO, transcriptionDAO, s3Service)
         
         get("/") {
             call.respondText(

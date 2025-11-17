@@ -266,15 +266,18 @@ fun Route.authRoutes(keycloakService: KeycloakService) {
             description = "Проверяет валидность JWT токена и возвращает базовую информацию о пользователе из токена (Keycloak ID, email, имя)."
             tags = listOf("Authentication")
             parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
-            response(HttpStatusCode.OK, "Токен валиден, информация о пользователе", "application/json") {
-                """
-                {
-                  "keycloakUserId": "uuid",
-                  "email": "user@example.com",
-                  "fullName": "John Doe"
-                }
-                """.trimIndent()
-            }
+                        response(
+                                HttpStatusCode.OK,
+                                "Токен валиден, информация о пользователе",
+                                "application/json",
+                                example = """
+                                        {
+                                            "keycloakUserId": "uuid",
+                                            "email": "user@example.com",
+                                            "fullName": "John Doe"
+                                        }
+                                """.trimIndent()
+                        )
             response(HttpStatusCode.Unauthorized, "Недействительный или отсутствующий токен")
         }
         

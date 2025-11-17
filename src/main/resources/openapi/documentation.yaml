@@ -2,553 +2,426 @@ openapi: 3.1.0
 info:
   title: Smart Dictophone API
   version: 1.0.0
-  description: |
-    # Smart Dictophone API
-
-    REST API для умного диктофона с автоматической транскрипцией и организацией записей.
-
-    ## Основные возможности
-    - 🔐 Аутентификация через Keycloak (JWT)
-    - 📁 Организация записей по папкам
-    - 🎙️ Загрузка и хранение аудиофайлов
-    - 📝 Автоматическая транскрипция
-    - 📄 Экспорт транскрипций в PDF
-    - 🔍 Поиск по записям
-    - 📊 Статистика использования
-
-    ## Аутентификация
-    API использует Keycloak для аутентификации. Получите токен через `/login` и используйте его в заголовке `Authorization: Bearer {token}`.
-
-    ## Форматы данных
-    - Аудиофайлы: поддерживается формат M4A
-    - Даты: ISO-8601 формат (YYYY-MM-DDTHH:mm:ssZ)
-    - Пагинация: page начинается с 0, size по умолчанию 20
-  contact:
-    name: Smart Dictophone Support
-    email: support@smartdictophone.com
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
+  description: "REST API для умного диктофона с автоматической транскрипцией и организацией записей.\n\n## Основные возмож\
+    ности\n- 🔐 Аутентификация через Keycloak (JWT)\n- 📁 Организация записей по папкам\n- 🎙️ Загрузка и хранение аудиофа\
+    йлов\n- 📝 Автоматическая транскрипция (через RabbitMQ)\n- 📄 Экспорт транскрипций в PDF\n- 🔍 Поиск по записям\n- 📊\
+    \ Статистика использования\n\n## Аутентификация\nAPI использует Keycloak для аутентификации. Получите токен через `/auth/login`\
+    \ \nи используйте его в заголовке `Authorization: Bearer {token}`."
 servers:
-- url: https://api.smartdictophone.com
-  description: Production
 - url: http://localhost:8888
   description: Локальная разработка
-
+- url: https://api.smartdictophone.com
+  description: Production
 paths:
-  # Health check
-  /:
+  /folders:
     get:
-      summary: API информация
-      description: Возвращает информацию об API и ссылки на документацию
+      summary: Получить все папки пользователя
       tags:
-        - System
+      - Folders
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
       responses:
-        '200':
-          description: Информация об API
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: |
-                Smart Dictophone API v1.0 (Keycloak Integration)
-
-                API Documentation:
-                - Swagger UI: /swagger-ui
-                - OpenAPI JSON (generated): /openapi.json
-
-  /health:
-    get:
-      summary: Проверка состояния сервиса
-      description: Проверяет, что API работает корректно
-      tags:
-        - System
-      responses:
-        '200':
-          description: Сервис работает нормально
+        '401':
+          description: Недействительный токен
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                    example: "healthy"
-
-  # Authentication
-  /register:
-    post:
-      summary: Регистрация нового пользователя
-      description: Создаёт нового пользователя в Keycloak и автоматически выполняет вход
-      tags:
-        - Authentication
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-            example:
-              username: "john_doe"
-              email: "john@example.com"
-              password: "SecurePass123"
-              firstName: "John"
-              lastName: "Doe"
-      responses:
-        '201':
-          description: Пользователь успешно создан и авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegisterResponse'
-        '400':
-          description: Неверный формат данных или отсутствуют обязательные поля
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Пользователь с таким email или username уже существует
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /login:
-    post:
-      summary: Вход в систему
-      description: Аутентификация пользователя через Keycloak и получение JWT токенов
-      tags:
-        - Authentication
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-            example:
-              email: "john@example.com"
-              password: "SecurePass123"
-      responses:
-        '200':
-          description: Успешная аутентификация, возвращаются JWT токены
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
-        '400':
-          description: Не указан email или пароль
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Неверный email или пароль
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /refresh:
-    post:
-      summary: Обновление токена
-      description: Получение нового access токена с помощью refresh токена
-      tags:
-        - Authentication
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Новый access токен успешно получен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
-        '400':
-          description: Refresh токен не указан
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Невалидный или истёкший refresh токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /loginOnToken:
-    post:
-      summary: Проверить токен и получить данные пользователя
-      description: Валидация JWT токена и получение информации о пользователе
-      tags:
-        - Authentication
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Токен валиден, информация о пользователе
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserInfo'
-        '401':
-          description: Недействительный или отсутствующий токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  # User Management
-  /recordInfo:
-    get:
-      summary: Получить профиль и статистику пользователя
-      description: |
-        Возвращает информацию о пользователе из JWT токена Keycloak и статистику записей.
-        При первом запросе автоматически создаёт дефолтные папки (Избранное, Архив, Корзина).
-      tags:
-        - Users
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Информация о пользователе и статистика
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserInfo'
-              example:
-                keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-                username: "john_doe"
-                email: "john@example.com"
-                fullName: "John Doe"
-                countRecords: 42
-                countMinutes: 180
-        '401':
-          description: Недействительный токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  # Folders
-  /folders:
-    get:
-      summary: Получить все папки пользователя
-      description: |
-        Возвращает список всех папок пользователя. 
-        При первом запросе автоматически создаёт дефолтные папки (Избранное, Архив, Корзина).
-      tags:
-        - Folders
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Список папок
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Folder'
-              example:
-                - id: 1
-                  keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-                  name: "Избранное"
-                  description: "Избранные записи"
-                  createdAt: "2024-01-01T00:00:00Z"
-                  updatedAt: "2024-01-01T00:00:00Z"
-                - id: 2
-                  keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-                  name: "Рабочие встречи"
-                  description: "Записи с рабочих встреч"
-                  createdAt: "2024-01-01T12:00:00Z"
-                  updatedAt: "2024-01-01T12:00:00Z"
-        '401':
-          description: Недействительный токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
     post:
       summary: Создать новую папку
-      description: Создаёт новую пользовательскую папку для организации записей
       tags:
-        - Folders
-      security:
-        - BearerAuth: []
+      - Folders
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FolderCreateRequest'
+              type: object
             example:
-              name: "Рабочие записи"
-              description: "Записи с рабочих встреч"
+              name: Рабочие записи
+              description: Записи с рабочих встреч
       responses:
-        '201':
-          description: Папка успешно создана
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Folder'
         '400':
           description: Некорректные данные (пустое имя или ошибка создания)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '401':
           description: Недействительный токен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  # Records
+                type: object
+  /folders/{id}:
+    put:
+      summary: Обновить папку
+      tags:
+      - Folders
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID папки для обновления
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              name: Важные записи
+              description: Самые важные записи
+      responses:
+        '400':
+          description: Некорректный ID папки или пустое имя
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Недействительный токен
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Нет прав на обновление этой папки
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Папка не найдена
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      summary: Удалить папку
+      tags:
+      - Folders
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID папки для удаления
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Папка успешно удалена
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Некорректный ID папки
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Недействительный токен
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Нет прав на удаление этой папки
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Папка не найдена
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Ошибка при удалении папки
+          content:
+            application/json:
+              schema:
+                type: object
   /records:
     get:
       summary: Получить список записей
-      description: Возвращает список аудиозаписей пользователя с поддержкой поиска, фильтрации и пагинации
       tags:
-        - Records
-      security:
-        - BearerAuth: []
+      - Records
       parameters:
-        - name: search
-          in: query
-          description: Поисковый запрос по названию или описанию
-          required: false
-          schema:
-            type: string
-          example: "совещание"
-        - name: folderId
-          in: query
-          description: ID папки для фильтрации
-          required: false
-          schema:
-            type: integer
-          example: 1
-        - name: page
-          in: query
-          description: Номер страницы (начиная с 0)
-          required: false
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-          example: 0
-        - name: size
-          in: query
-          description: Количество элементов на странице (по умолчанию 20)
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-          example: 20
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: search
+        in: query
+        description: Поисковый запрос по названию или описанию
+        required: false
+        schema:
+          type: string
+      - name: folderId
+        in: query
+        description: ID папки для фильтрации
+        required: false
+        schema:
+          type: integer
+      - name: page
+        in: query
+        description: Номер страницы (начиная с 0)
+        required: false
+        schema:
+          type: integer
+      - name: size
+        in: query
+        description: Количество элементов на странице (по умолчанию 20)
+        required: false
+        schema:
+          type: integer
       responses:
         '200':
           description: Список записей с пагинацией
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedRecordsResponse'
+                type: object
         '401':
           description: Недействительный токен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
+                type: object
     post:
       summary: Создать новую запись
-      description: |
-        Загружает аудиофайл и создаёт новую запись. 
-        Файл сохраняется в S3 и автоматически отправляется задача на транскрипцию.
+      description: "Загружает аудиофайл и создаёт новую запись. \n                Файл сохраняется в S3 с именем {recordId}.m4a.\n\
+        \                Автоматически отправляет задачу на транскрипцию в RabbitMQ."
       tags:
-        - Records
-      security:
-        - BearerAuth: []
+      - Records
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
       requestBody:
+        description: |-
+          Multipart form data с полями:
+                              - recordFile (file, required): аудиофайл в формате m4a
+                              - name (string, required): название записи
+                              - datetime (string, required): дата и время в формате ISO-8601
+                              - category (string, required): категория (MEETING, LECTURE, INTERVIEW, NOTE, OTHER)
+                              - folderId (integer, required): ID папки
+                              - place (string, optional): место записи (можно передать координаты через запятую)
         required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/RecordCreateRequest'
+              type: object
       responses:
         '201':
           description: Запись успешно создана и аудио загружено
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Record'
+                type: object
         '400':
           description: Отсутствуют обязательные поля или ошибка загрузки
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '401':
           description: Недействительный токен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Нет доступа к указанной папке
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '404':
           description: Папка не найдена
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
+                type: object
+        '403':
+          description: Нет доступа к указанной папке
+          content:
+            application/json:
+              schema:
+                type: object
   /records/{id}/audio:
     get:
       summary: Скачать аудиофайл записи
-      description: Возвращает аудиофайл в формате M4A
       tags:
-        - Records
-      security:
-        - BearerAuth: []
+      - Records
       parameters:
-        - name: id
-          in: path
-          description: ID записи
-          required: true
-          schema:
-            type: integer
-          example: 123
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID записи
+        required: true
+        schema:
+          type: integer
       responses:
         '200':
           description: Аудиофайл (audio/m4a)
           content:
-            audio/m4a:
+            application/json:
               schema:
-                type: string
-                format: binary
+                type: object
         '400':
           description: Неверный ID записи
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '401':
           description: Недействительный токен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '403':
           description: Нет доступа к этой записи
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '404':
           description: Запись не найдена
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
+                type: object
   /records/{id}/pdf:
     get:
       summary: Скачать PDF с транскрипцией
-      description: Генерирует и возвращает PDF файл с транскрипцией записи
       tags:
-        - Records
-      security:
-        - BearerAuth: []
+      - Records
       parameters:
-        - name: id
-          in: path
-          description: ID записи
-          required: true
-          schema:
-            type: integer
-          example: 123
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID записи
+        required: true
+        schema:
+          type: integer
       responses:
         '200':
-          description: PDF файл с транскрипцией
+          description: PDF файл с транскрипцией (application/pdf)
           content:
-            application/pdf:
+            application/json:
               schema:
-                type: string
-                format: binary
+                type: object
         '400':
           description: Неверный ID записи
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '401':
           description: Недействительный токен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '403':
           description: Нет доступа к этой записи
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '404':
           description: Запись не найдена или транскрипция отсутствует
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '500':
           description: Ошибка генерации PDF
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
+                type: object
   /records/{id}/transcribe:
     post:
-      summary: Сохранить результат транскрипции (ML Service)
-      description: |
+      summary: Сохранить результат транскрипции
+      description: |-
         Эндпоинт для ML сервиса транскрипции.
-        Сохраняет сегменты транскрибированного текста для записи.
-        Требуется API ключ в заголовке X-API-Key.
+                                Сохраняет сегменты транскрибированного текста для записи.
+                                Требуется API ключ в заголовке X-API-Key.
       tags:
-        - Records
-        - ML Service
-      security:
-        - ApiKeyAuth: []
+      - Records
+      - ML Service
       parameters:
-        - name: id
-          in: path
-          description: ID записи
-          required: true
-          schema:
-            type: integer
-          example: 123
+      - name: X-API-Key
+        in: header
+        description: API ключ для ML сервиса
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID записи
+        required: true
+        schema:
+          type: integer
       requestBody:
+        description: |-
+          JSON с сегментами транскрипции:
+                                          {
+                                              "segments": [
+                                                  {
+                                                      "start": 0.0,
+                                                      "end": 5.2,
+                                                      "text": "Текст сегмента"
+                                                  }
+                                              ]
+                                          }
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TranscribeRequest'
-            example:
-              segments:
-                - start: 0.0
-                  end: 5.2
-                  text: "Добро пожаловать на совещание"
-                - start: 5.2
-                  end: 12.8
-                  text: "Сегодня мы обсудим планы на следующий квартал"
+              type: object
       responses:
         '200':
           description: Транскрипция успешно сохранена
@@ -556,388 +429,162 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Transcription saved successfully"
         '400':
           description: Неверный ID записи или пустые сегменты
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '401':
           description: Неверный API ключ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
         '404':
           description: Запись не найдена
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
+                type: object
+  /recordInfo:
+    get:
+      summary: Получить профиль и статистику пользователя
+      tags:
+      - Users
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      responses:
+        '401':
+          description: Недействительный токен
+          content:
+            application/json:
+              schema:
+                type: object
+  /register:
+    post:
+      summary: Регистрация нового пользователя
+      tags:
+      - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Пользователь успешно создан и авторизован
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Неверный формат данных или отсутствуют обязательные поля
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Пользователь с таким email или username уже существует
+          content:
+            application/json:
+              schema:
+                type: object
+  /login:
+    post:
+      summary: Вход в систему
+      tags:
+      - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Успешная аутентификация, возвращаются JWT токены
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Не указан email или пароль
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                type: object
+  /refresh:
+    post:
+      summary: Обновление токена
+      tags:
+      - Authentication
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {refresh_token}
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Новый access токен успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Refresh токен не указан
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Невалидный или истёкший refresh токен
+          content:
+            application/json:
+              schema:
+                type: object
+  /loginOnToken:
+    post:
+      summary: Проверить токен и получить данные пользователя
+      tags:
+      - Authentication
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      responses:
+        '401':
+          description: Недействительный или отсутствующий токен
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT токен от Keycloak. Получите через POST /login
+      description: JWT токен от Keycloak. Получите через POST /auth/login
     ApiKeyAuth:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API ключ для ML сервиса (внутреннее использование)
-
-  schemas:
-    # Request/Response models
-    RegisterRequest:
-      type: object
-      required:
-        - username
-        - email
-        - password
-      properties:
-        username:
-          type: string
-          description: Уникальное имя пользователя
-          example: "john_doe"
-        email:
-          type: string
-          format: email
-          description: Email адрес пользователя
-          example: "john@example.com"
-        password:
-          type: string
-          format: password
-          minLength: 8
-          description: Пароль (минимум 8 символов)
-          example: "SecurePass123"
-        firstName:
-          type: string
-          description: Имя пользователя
-          example: "John"
-        lastName:
-          type: string
-          description: Фамилия пользователя
-          example: "Doe"
-
-    LoginRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
-          type: string
-          format: email
-          description: Email адрес пользователя
-          example: "john@example.com"
-        password:
-          type: string
-          format: password
-          description: Пароль пользователя
-          example: "SecurePass123"
-
-    TokenResponse:
-      type: object
-      properties:
-        accessToken:
-          type: string
-          description: JWT access токен
-        refreshToken:
-          type: string
-          description: JWT refresh токен
-        expiresIn:
-          type: integer
-          description: Время жизни access токена в секундах
-        tokenType:
-          type: string
-          description: Тип токена
-          example: "Bearer"
-
-    RegisterResponse:
-      type: object
-      properties:
-        userId:
-          type: string
-          description: ID созданного пользователя
-        accessToken:
-          type: string
-          description: JWT access токен
-        refreshToken:
-          type: string
-          description: JWT refresh токен
-        expiresIn:
-          type: integer
-          description: Время жизни access токена в секундах
-        message:
-          type: string
-          description: Сообщение о результате регистрации
-
-    UserInfo:
-      type: object
-      properties:
-        keycloakUserId:
-          type: string
-          description: ID пользователя в Keycloak
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        username:
-          type: string
-          description: Имя пользователя
-          example: "john_doe"
-        email:
-          type: string
-          format: email
-          description: Email адрес
-          example: "john@example.com"
-        fullName:
-          type: string
-          description: Полное имя пользователя
-          example: "John Doe"
-        countRecords:
-          type: integer
-          description: Общее количество записей
-          example: 42
-        countMinutes:
-          type: integer
-          description: Общая продолжительность записей в минутах
-          example: 180
-
-    Folder:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Уникальный идентификатор папки
-        keycloakUserId:
-          type: string
-          description: ID владельца папки
-        name:
-          type: string
-          description: Название папки
-          example: "Рабочие встречи"
-        description:
-          type: string
-          description: Описание папки
-          example: "Записи с рабочих совещаний"
-        createdAt:
-          type: string
-          format: date-time
-          description: Дата и время создания
-        updatedAt:
-          type: string
-          format: date-time
-          description: Дата и время последнего обновления
-
-    FolderCreateRequest:
-      type: object
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 255
-          description: Название папки
-          example: "Рабочие записи"
-        description:
-          type: string
-          maxLength: 1000
-          description: Описание папки
-          example: "Записи с рабочих встреч"
-
-    Record:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Уникальный идентификатор записи
-        keycloakUserId:
-          type: string
-          description: ID владельца записи
-        folderId:
-          type: integer
-          description: ID папки, в которой находится запись
-        name:
-          type: string
-          description: Название записи
-          example: "Совещание по проекту"
-        datetime:
-          type: string
-          format: date-time
-          description: Дата и время записи
-        category:
-          $ref: '#/components/schemas/RecordCategory'
-        place:
-          type: string
-          description: Место записи
-          example: "Офис, переговорная 1"
-        filePath:
-          type: string
-          description: Путь к файлу в S3
-          example: "123.m4a"
-        transcriptionText:
-          type: string
-          description: Текст транскрипции (если доступен)
-        createdAt:
-          type: string
-          format: date-time
-          description: Дата и время создания записи
-        updatedAt:
-          type: string
-          format: date-time
-          description: Дата и время последнего обновления
-
-    RecordCategory:
-      type: string
-      enum:
-        - MEETING
-        - LECTURE
-        - INTERVIEW
-        - NOTE
-        - OTHER
-      description: |
-        Категория записи:
-        - MEETING: Совещание/встреча
-        - LECTURE: Лекция/презентация
-        - INTERVIEW: Интервью
-        - NOTE: Заметка
-        - OTHER: Другое
-
-    RecordCreateRequest:
-      type: object
-      required:
-        - recordFile
-        - name
-        - datetime
-        - category
-        - folderId
-      properties:
-        recordFile:
-          type: string
-          format: binary
-          description: Аудиофайл в формате M4A
-        name:
-          type: string
-          minLength: 1
-          maxLength: 255
-          description: Название записи
-          example: "Совещание по проекту"
-        datetime:
-          type: string
-          format: date-time
-          description: Дата и время записи в формате ISO-8601
-          example: "2024-01-15T14:30:00Z"
-        category:
-          $ref: '#/components/schemas/RecordCategory'
-        folderId:
-          type: integer
-          description: ID папки для размещения записи
-          example: 1
-        place:
-          type: string
-          maxLength: 500
-          description: Место записи (опционально)
-          example: "Офис, переговорная 1"
-
-    PaginatedRecordsResponse:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: '#/components/schemas/Record'
-        totalElements:
-          type: integer
-          description: Общее количество элементов
-          example: 42
-        totalPages:
-          type: integer
-          description: Общее количество страниц
-          example: 3
-
-    TranscribeRequest:
-      type: object
-      required:
-        - segments
-      properties:
-        segments:
-          type: array
-          items:
-            $ref: '#/components/schemas/TranscriptionSegment'
-          description: Массив сегментов транскрипции
-
-    TranscriptionSegment:
-      type: object
-      required:
-        - start
-        - end
-        - text
-      properties:
-        start:
-          type: number
-          format: float
-          description: Время начала сегмента в секундах
-          example: 0.0
-        end:
-          type: number
-          format: float
-          description: Время окончания сегмента в секундах
-          example: 5.2
-        text:
-          type: string
-          description: Транскрибированный текст сегмента
-          example: "Добро пожаловать на совещание"
-
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Описание ошибки
-          example: "Invalid token"
-        code:
-          type: integer
-          description: Код ошибки
-          example: 401
-        timestamp:
-          type: string
-          format: date-time
-          description: Время возникновения ошибки
-
-  examples:
-    UserInfoExample:
-      value:
-        keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-        username: "john_doe"
-        email: "john@example.com"
-        fullName: "John Doe"
-        countRecords: 42
-        countMinutes: 180
-
-    FolderExample:
-      value:
-        id: 1
-        keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-        name: "Рабочие встречи"
-        description: "Записи с рабочих совещаний"
-        createdAt: "2024-01-01T12:00:00Z"
-        updatedAt: "2024-01-01T12:00:00Z"
-
-    RecordExample:
-      value:
-        id: 123
-        keycloakUserId: "550e8400-e29b-41d4-a716-446655440000"
-        folderId: 1
-        name: "Совещание по проекту"
-        datetime: "2024-01-15T14:30:00Z"
-        category: "MEETING"
-        place: "Офис, переговорная 1"
-        filePath: "123.m4a"
-        transcriptionText: "Добро пожаловать на совещание..."
-        createdAt: "2024-01-15T14:30:00Z"
-        updatedAt: "2024-01-15T14:35:00Z"
+      description: API ключ для сервисных запросов (внутреннее использование)

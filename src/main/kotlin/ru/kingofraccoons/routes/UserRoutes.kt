@@ -28,18 +28,21 @@ fun Route.userRoutes(
             description = "Возвращает информацию о пользователе из JWT токена Keycloak (ID, username, email, имя) и статистику записей (количество записей и общая продолжительность в минутах). При первом запросе автоматически создаёт дефолтные папки."
             tags = listOf("Users")
             parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
-            response(HttpStatusCode.OK, "Информация о пользователе и статистика", "application/json") {
-                """
-                {
-                  "keycloakUserId": "uuid",
-                  "username": "john_doe",
-                  "email": "john@example.com",
-                  "fullName": "John Doe",
-                  "countRecords": 42,
-                  "countMinutes": 180
-                }
-                """.trimIndent()
-            }
+                        response(
+                                HttpStatusCode.OK,
+                                "Информация о пользователе и статистика",
+                                "application/json",
+                                example = """
+                                        {
+                                            "keycloakUserId": "uuid",
+                                            "username": "john_doe",
+                                            "email": "john@example.com",
+                                            "fullName": "John Doe",
+                                            "countRecords": 42,
+                                            "countMinutes": 180
+                                        }
+                                """.trimIndent()
+                        )
             response(HttpStatusCode.Unauthorized, "Недействительный токен")
         }
         

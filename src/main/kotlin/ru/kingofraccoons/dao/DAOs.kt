@@ -126,6 +126,11 @@ class RecordDAO {
             .singleOrNull()
     }
 
+    suspend fun findByFolderId(folderId: Long): List<Record> = dbQuery {
+        Records.selectAll().where { Records.folderId eq folderId }
+            .map(::resultRowToRecord)
+    }
+
     /**
      * Поиск записей пользователя с фильтрацией
      */
@@ -248,6 +253,10 @@ class TranscriptionDAO {
         TranscriptionSegments.selectAll().where { TranscriptionSegments.recordId eq recordId }
             .orderBy(TranscriptionSegments.start to SortOrder.ASC)
             .map(::resultRowToSegment)
+    }
+
+    suspend fun deleteByRecordId(recordId: Long): Int = dbQuery {
+        TranscriptionSegments.deleteWhere { TranscriptionSegments.recordId eq recordId }
     }
 
     private fun resultRowToSegment(row: ResultRow) = TranscriptionSegment(

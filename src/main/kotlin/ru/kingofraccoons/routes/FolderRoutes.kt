@@ -8,15 +8,23 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import ru.kingofraccoons.dao.FolderDAO
+import ru.kingofraccoons.dao.RecordDAO
+import ru.kingofraccoons.dao.TranscriptionDAO
 import ru.kingofraccoons.models.*
 import ru.kingofraccoons.openapi.ParameterLocation
 import ru.kingofraccoons.openapi.apiDoc
+import ru.kingofraccoons.services.S3Service
 
 /**
  * Folder management routes
  * Управление папками пользователя с автоматическим созданием дефолтных папок
  */
-fun Route.folderRoutes(folderDAO: FolderDAO) {
+fun Route.folderRoutes(
+    folderDAO: FolderDAO,
+    recordDAO: RecordDAO,
+    transcriptionDAO: TranscriptionDAO,
+    s3Service: S3Service
+) {
     authenticate("auth-jwt") {
         apiDoc("GET", "/folders") {
             summary = "Получить все папки пользователя"
@@ -25,20 +33,23 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
 
             parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
 
-            response(HttpStatusCode.OK, "Список папок", "application/json") {
-                """
-                [
-                  {
-                    "id": 1,
-                    "keycloakUserId": "uuid",
-                    "name": "Избранное",
-                    "description": "Избранные записи",
-                    "createdAt": "2024-01-01T00:00:00Z",
-                    "updatedAt": "2024-01-01T00:00:00Z"
-                  }
-                ]
-                """.trimIndent()
-            }
+                        response(
+                                HttpStatusCode.OK,
+                                "Список папок",
+                                "application/json",
+                                example = """
+                                        [
+                                            {
+                                                "id": 1,
+                                                "keycloakUserId": "uuid",
+                                                "name": "Избранное",
+                                                "description": "Избранные записи",
+                                                "createdAt": "2024-01-01T00:00:00Z",
+                                                "updatedAt": "2024-01-01T00:00:00Z"
+                                            }
+                                        ]
+                                """.trimIndent()
+                        )
 
             response(HttpStatusCode.Unauthorized, "Недействительный токен")
         }
@@ -69,31 +80,33 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
 
             parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
 
-            requestBody(
-                description = "Данные для создания папки",
-                required = true,
-                contentType = "application/json"
-            ) {
-                """
-                {
-                  "name": "Рабочие записи",
-                  "description": "Записи с рабочих встреч"
-                }
-                """.trimIndent()
-            }
+                        requestBody(
+                                description = "Данные для создания папки",
+                                required = true,
+                                contentType = "application/json",
+                                example = """
+                                        {
+                                            "name": "Рабочие записи",
+                                            "description": "Записи с рабочих встреч"
+                                        }
+                                """.trimIndent()
+                        )
 
-            response(HttpStatusCode.Created, "Папка успешно создана", "application/json") {
-                """
-                {
-                  "id": 5,
-                  "keycloakUserId": "uuid",
-                  "name": "Рабочие записи",
-                  "description": "Записи с рабочих встреч",
-                  "createdAt": "2024-01-01T00:00:00Z",
-                  "updatedAt": "2024-01-01T00:00:00Z"
-                }
-                """.trimIndent()
-            }
+                        response(
+                                HttpStatusCode.Created,
+                                "Папка успешно создана",
+                                "application/json",
+                                example = """
+                                        {
+                                            "id": 5,
+                                            "keycloakUserId": "uuid",
+                                            "name": "Рабочие записи",
+                                            "description": "Записи с рабочих встреч",
+                                            "createdAt": "2024-01-01T00:00:00Z",
+                                            "updatedAt": "2024-01-01T00:00:00Z"
+                                        }
+                                """.trimIndent()
+                        )
 
             response(HttpStatusCode.BadRequest, "Некорректные данные (пустое имя или ошибка создания)")
             response(HttpStatusCode.Unauthorized, "Недействительный токен")
@@ -143,31 +156,33 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
             parameter("Authorization", "Bearer {token}", required = true, type = "string", location = ParameterLocation.HEADER)
             parameter("id", "ID папки для обновления", required = true, type = "integer", location = ParameterLocation.PATH)
 
-            requestBody(
-                description = "Обновлённые данные папки",
-                required = true,
-                contentType = "application/json"
-            ) {
-                """
-                {
-                  "name": "Важные записи",
-                  "description": "Самые важные записи"
-                }
-                """.trimIndent()
-            }
+                        requestBody(
+                                description = "Обновлённые данные папки",
+                                required = true,
+                                contentType = "application/json",
+                                example = """
+                                        {
+                                            "name": "Важные записи",
+                                            "description": "Самые важные записи"
+                                        }
+                                """.trimIndent()
+                        )
 
-            response(HttpStatusCode.OK, "Папка успешно обновлена", "application/json") {
-                """
-                {
-                  "id": 5,
-                  "keycloakUserId": "uuid",
-                  "name": "Важные записи",
-                  "description": "Самые важные записи",
-                  "createdAt": "2024-01-01T00:00:00Z",
-                  "updatedAt": "2024-01-01T00:10:00Z"
-                }
-                """.trimIndent()
-            }
+                        response(
+                                HttpStatusCode.OK,
+                                "Папка успешно обновлена",
+                                "application/json",
+                                example = """
+                                        {
+                                            "id": 5,
+                                            "keycloakUserId": "uuid",
+                                            "name": "Важные записи",
+                                            "description": "Самые важные записи",
+                                            "createdAt": "2024-01-01T00:00:00Z",
+                                            "updatedAt": "2024-01-01T00:10:00Z"
+                                        }
+                                """.trimIndent()
+                        )
 
             response(HttpStatusCode.BadRequest, "Некорректный ID папки или пустое имя")
             response(HttpStatusCode.Unauthorized, "Недействительный токен")
@@ -284,6 +299,30 @@ fun Route.folderRoutes(folderDAO: FolderDAO) {
                 )
             }
             
+            val recordsToRemove = recordDAO.findByFolderId(folderId)
+            recordsToRemove.forEach { record ->
+                try {
+                    transcriptionDAO.deleteByRecordId(record.id)
+                    val deletedRecord = recordDAO.delete(record.id)
+                    if (!deletedRecord) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            ErrorResponse("Failed to delete record ${record.id}", 500)
+                        )
+                        return@delete
+                    }
+                    if (record.audioUrl.isNotBlank()) {
+                        s3Service.deleteFileByUrl(record.audioUrl)
+                    }
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("Failed to cleanup folder records: ${e.message}", 500)
+                    )
+                    return@delete
+                }
+            }
+
             val deleted = folderDAO.delete(folderId)
             if (deleted) {
                 call.respond(HttpStatusCode.NoContent)

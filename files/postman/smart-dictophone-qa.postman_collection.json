@@ -1,0 +1,822 @@
+{
+  "info": {
+    "name": "Smart Dictophone QA",
+    "description": "Flat collection for Smart Dictophone API smoke tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "[System] Health Check",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Health endpoint returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Health payload contains healthy flag', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('status');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[System] API Root",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/",
+          "host": [
+            "{{baseUrl}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Root endpoint returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[System] OpenAPI JSON",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/openapi.json?raw=true",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "openapi.json"
+          ],
+          "query": [
+            {
+              "key": "raw",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('OpenAPI spec loads successfully', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Auth] Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"username\": \"smart.user\", \"email\": \"{{generatedEmail}}\", \"password\": \"{{userPassword}}\", \"firstName\": \"Smart\", \"lastName\": \"User\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "register"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const uniqueSuffix = Date.now().toString();",
+              "const email = `smart.user.${uniqueSuffix}@example.com`;",
+              "pm.environment.set('generatedEmail', email);",
+              "pm.environment.set('userEmail', email);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Register returns 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Auth] Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"{{userEmail}}\", \"password\": \"{{userPassword}}\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login returns tokens', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('accessToken');",
+              "  pm.environment.set('accessToken', body.accessToken);",
+              "  pm.environment.set('refreshToken', body.refreshToken || '');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Auth] Refresh",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{refreshToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/refresh",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "refresh"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Refresh issues access token', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Auth] loginOnToken",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/loginOnToken",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "loginOnToken"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('loginOnToken returns profile', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Users] Record Info",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/recordInfo",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "recordInfo"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Folders] List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/folders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "folders"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Folders] Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"{{folderName}}\", \"description\": \"{{folderDescription}}\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/folders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "folders"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Folder created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('folderId', String(body.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Folders] Update",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"{{updatedFolderName}}\", \"description\": \"{{updatedFolderDescription}}\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/folders/{{folderId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "folders",
+            "{{folderId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Records] List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/records?search={{recordSearch}}&folderId={{folderId}}&page={{recordPage}}&size={{recordPageSize}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records"
+          ],
+          "query": [
+            {
+              "key": "search",
+              "value": "{{recordSearch}}"
+            },
+            {
+              "key": "folderId",
+              "value": "{{folderId}}"
+            },
+            {
+              "key": "page",
+              "value": "{{recordPage}}"
+            },
+            {
+              "key": "size",
+              "value": "{{recordPageSize}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Records] Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "recordFile",
+              "type": "file",
+              "src": [
+                "files/postman/sample.m4a"
+              ]
+            },
+            {
+              "key": "name",
+              "value": "{{recordName}}",
+              "type": "text"
+            },
+            {
+              "key": "datetime",
+              "value": "{{recordDateTime}}",
+              "type": "text"
+            },
+            {
+              "key": "category",
+              "value": "Work",
+              "type": "text"
+            },
+            {
+              "key": "folderId",
+              "value": "{{folderId}}",
+              "type": "text"
+            },
+            {
+              "key": "place",
+              "value": "{{recordPlace}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/records",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Record uploaded', function () {",
+              "  pm.expect([200, 201]).to.include(pm.response.code);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('id');",
+              "  const recordId = String(body.id);",
+              "  pm.environment.set('recordId', recordId);",
+              "  pm.collectionVariables.set('recordId', recordId);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Records] Provide Transcription",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{mlApiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"segments\": [\n    { \"start\": 0, \"end\": 4.2, \"text\": \"Greeting and introduction\" },\n    { \"start\": 4.2, \"end\": 9.7, \"text\": \"Discussion about planning\" }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/records/{{recordId}}/transcribe",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records",
+            "{{recordId}}",
+            "transcribe"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Transcription saved successfully', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('message');",
+              "  pm.expect(body.message).to.include('success');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Records] Download Audio",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/records/{{recordId}}/audio",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records",
+            "{{recordId}}",
+            "audio"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Audio becomes downloadable', function (done) {",
+              "  const status = pm.response.code;",
+              "  const token = pm.environment.get('accessToken');",
+              "  pm.expect(token, 'access token is required').to.be.a('string').that.is.not.empty;",
+              "  const pickNumber = (value, fallback) => {",
+              "    const parsed = parseInt(value, 10);",
+              "    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;",
+              "  };",
+              "  const maxAttempts = pickNumber(pm.collectionVariables.get('audioDownloadMaxAttempts') || pm.environment.get('audioDownloadMaxAttempts'), 5);",
+              "  const delayMs = pickNumber(pm.collectionVariables.get('audioDownloadDelayMs') || pm.environment.get('audioDownloadDelayMs'), 1000);",
+              "  if (status === 200) {",
+              "    pm.response.to.have.status(200);",
+              "    const contentType = pm.response.headers.get('Content-Type') || '';",
+              "    pm.expect(contentType).to.include('audio');",
+              "    return done();",
+              "  }",
+              "  let attempt = 1;",
+              "  let lastStatus = status;",
+              "  const requestOptions = {",
+              "    url: pm.variables.replaceIn('{{baseUrl}}/records/{{recordId}}/audio'),",
+              "    method: 'GET',",
+              "    header: {",
+              "      Authorization: 'Bearer ' + token",
+              "    }",
+              "  };",
+              "  const scheduleRetry = () => {",
+              "    if (attempt >= maxAttempts) {",
+              "      pm.expect.fail('Audio endpoint stayed at ' + lastStatus + ' after ' + attempt + ' attempts');",
+              "      return done();",
+              "    }",
+              "    attempt += 1;",
+              "    setTimeout(() => {",
+              "      pm.sendRequest(requestOptions, (err, res) => {",
+              "        if (!err && res && res.code === 200) {",
+              "          pm.expect(res.code).to.eql(200);",
+              "          const responseType = res.headers && res.headers.get ? res.headers.get('Content-Type') || '' : '';",
+              "          pm.expect(responseType).to.include('audio');",
+              "          return done();",
+              "        }",
+              "        lastStatus = err ? err.message : res && res.code;",
+              "        scheduleRetry();",
+              "      });",
+              "    }, delayMs);",
+              "  };",
+              "  scheduleRetry();",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Records] Download PDF",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/records/{{recordId}}/pdf",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records",
+            "{{recordId}}",
+            "pdf"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('PDF becomes downloadable', function (done) {",
+              "  const status = pm.response.code;",
+              "  const token = pm.environment.get('accessToken');",
+              "  pm.expect(token, 'access token is required').to.be.a('string').that.is.not.empty;",
+              "  const pickNumber = (value, fallback) => {",
+              "    const parsed = parseInt(value, 10);",
+              "    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;",
+              "  };",
+              "  const maxAttempts = pickNumber(pm.collectionVariables.get('pdfDownloadMaxAttempts') || pm.environment.get('pdfDownloadMaxAttempts'), 3);",
+              "  const delayMs = pickNumber(pm.collectionVariables.get('pdfDownloadDelayMs') || pm.environment.get('pdfDownloadDelayMs'), 1000);",
+              "  const assertPdfHeaders = (response) => {",
+              "    const contentType = response.headers && response.headers.get ? response.headers.get('Content-Type') || '' : '';",
+              "    pm.expect(contentType).to.include('application/pdf');",
+              "  };",
+              "  if (status === 200) {",
+              "    pm.response.to.have.status(200);",
+              "    assertPdfHeaders(pm.response);",
+              "    return done();",
+              "  }",
+              "  let attempt = 1;",
+              "  let lastStatus = status;",
+              "  const requestOptions = {",
+              "    url: pm.variables.replaceIn('{{baseUrl}}/records/{{recordId}}/pdf'),",
+              "    method: 'GET',",
+              "    header: {",
+              "      Authorization: 'Bearer ' + token",
+              "    }",
+              "  };",
+              "  const scheduleRetry = () => {",
+              "    if (attempt >= maxAttempts) {",
+              "      pm.expect.fail('PDF endpoint stayed at ' + lastStatus + ' after ' + attempt + ' attempts');",
+              "      return done();",
+              "    }",
+              "    attempt += 1;",
+              "    setTimeout(() => {",
+              "      pm.sendRequest(requestOptions, (err, res) => {",
+              "        if (!err && res && res.code === 200) {",
+              "          pm.expect(res.code).to.eql(200);",
+              "          assertPdfHeaders(res);",
+              "          return done();",
+              "        }",
+              "        lastStatus = err ? err.message : res && res.code;",
+              "        scheduleRetry();",
+              "      });",
+              "    }, delayMs);",
+              "  };",
+              "  scheduleRetry();",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "[Folders] Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/folders/{{folderId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "folders",
+            "{{folderId}}"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8888"
+    },
+    {
+      "key": "userEmail",
+      "value": "test.user@example.com"
+    },
+    {
+      "key": "userPassword",
+      "value": "Passw0rd!"
+    },
+    {
+      "key": "generatedEmail",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "folderName",
+      "value": "Demo Folder"
+    },
+    {
+      "key": "folderDescription",
+      "value": "Записи рабочих встреч"
+    },
+    {
+      "key": "updatedFolderName",
+      "value": "Demo Folder (Updated)"
+    },
+    {
+      "key": "updatedFolderDescription",
+      "value": "Актуализированное описание"
+    },
+    {
+      "key": "folderId",
+      "value": "1"
+    },
+    {
+      "key": "recordSearch",
+      "value": ""
+    },
+    {
+      "key": "recordPage",
+      "value": "0"
+    },
+    {
+      "key": "recordPageSize",
+      "value": "20"
+    },
+    {
+      "key": "recordName",
+      "value": "Demo Meeting"
+    },
+    {
+      "key": "recordDateTime",
+      "value": "2024-01-10T09:00:00"
+    },
+    {
+      "key": "recordCategory",
+      "value": "MEETING"
+    },
+    {
+      "key": "recordFolderId",
+      "value": "1"
+    },
+    {
+      "key": "recordPlace",
+      "value": "55.751244, 37.618423"
+    },
+    {
+      "key": "recordId",
+      "value": ""
+    },
+    {
+      "key": "mlApiKey",
+      "value": "test-api-key"
+    },
+    {
+      "key": "audioDownloadMaxAttempts",
+      "value": "5"
+    },
+    {
+      "key": "audioDownloadDelayMs",
+      "value": "1000"
+    },
+    {
+      "key": "pdfDownloadMaxAttempts",
+      "value": "3"
+    },
+    {
+      "key": "pdfDownloadDelayMs",
+      "value": "1000"
+    }
+  ]
+}
