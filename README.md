@@ -94,6 +94,8 @@ docker-compose ps
 docker-compose logs -f api
 ```
 
+> ℹ️ Сервис `ml-service` теперь автоматически собирается из публичного репозитория [`mrkuloff/voice-recorder-ml-service`](https://github.com/mrkuloff/voice-recorder-ml-service) (ветка `main`). При первом запуске выполните `docker-compose build ml-service`, чтобы локально подготовить образ; дальнейшие `docker-compose up` будут переиспользовать его из кэша.
+
 ### 3. Ручная сборка и запуск
 
 ```bash

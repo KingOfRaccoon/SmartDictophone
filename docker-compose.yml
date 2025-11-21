@@ -137,7 +137,9 @@ services:
       start_period: 30s
 
   ml-service:
-    image: voice-recorder-ml-service:latest
+    build:
+      context: https://github.com/mrkuloff/voice-recorder-ml-service.git#main
+      dockerfile: Dockerfile
     restart: always
     depends_on:
       - rabbitmq
