@@ -103,8 +103,8 @@ fun Route.recordRoutes(
                     - recordFile (file, required): аудиофайл в формате m4a
                     - name (string, required): название записи
                     - datetime (string, required): дата и время в формате ISO-8601
-                    - category (string, required): категория (MEETING, LECTURE, INTERVIEW, NOTE, OTHER)
-                    - folderId (integer, required): ID папки
+                    - category (string, required): категория (Work, Study, Personal)
+                    - folderId (integer, optional): ID папки. Если не передан или нет доступа, будет выбрана дефолтная папка по категории (Работа/Учёба/Личное)
                     - place (string, optional): место записи (можно передать координаты через запятую)
                 """.trimIndent(),
                 contentType = "multipart/form-data"
@@ -134,6 +134,7 @@ fun Route.recordRoutes(
             var name: String? = null
             var folderId: Long? = null
             var category: RecordCategory? = null
+            var categoryRaw: String? = null
             var latitude: Float? = null
             var longitude: Float? = null
             multipart.forEachPart { part ->
@@ -148,8 +149,12 @@ fun Route.recordRoutes(
                             "place" -> place = part.value
                             "name" -> name = part.value
                             "folderId" -> folderId = part.value.toLongOrNull()
-                            "category" -> category = RecordCategory.entries
-                                .firstOrNull { it.name.equals(part.value, ignoreCase = true) }
+                            "category" -> {
+                                categoryRaw = part.value
+                                category = RecordCategory.entries.firstOrNull {
+                                    it.name.equals(part.value, ignoreCase = true)
+                                }
+                            }
                         }
                     }
                     is PartData.FileItem -> {
@@ -166,24 +171,51 @@ fun Route.recordRoutes(
                 }
                 part.dispose()
             }
-            
+
             logger.debug { "Received: datetime=$datetime, name=$name, category=$category, recordBytes size=${recordBytes?.size}, folderId=$folderId" }
-            
+
             // Validation
-            if (datetime == null || name.isNullOrBlank() || category == null || recordBytes == null) {
-                logger.warn { "Validation failed: datetime=$datetime, name=$name, category=$category, recordBytes=${recordBytes != null}" }
+            val allowedCategories = RecordCategory.entries.joinToString(", ") { it.name }
+            val validationErrors = buildList {
+                if (datetime == null) add("datetime is required and must be ISO-8601")
+                if (name.isNullOrBlank()) add("name is required")
+                if (category == null) add("category is required. Allowed: $allowedCategories (got: ${categoryRaw ?: ""})")
+                if (recordBytes == null) add("recordFile is required")
+            }
+
+            if (validationErrors.isNotEmpty()) {
+                logger.warn { "Validation failed: ${validationErrors.joinToString("; ")}" }
                 call.respond(
                     HttpStatusCode.BadRequest,
-                    ErrorResponse("Required fields: datetime, name, category, recordFile", 400)
+                    ErrorResponse("Validation failed: ${validationErrors.joinToString("; ")}", HttpStatusCode.BadRequest.value)
                 )
                 return@post
             }
 
-            val resolvedFolderId = folderId
+            val resolvedFolderId = when (val existingFolder = folderId?.let { folderDAO.findById(it) }) {
+                null -> null
+                else -> if (existingFolder.keycloakUserId == keycloakUserId) existingFolder.id else null
+            } ?: run {
+                // fall back to default folder based on category
+                val targetFolderName = when (category!!) {
+                    RecordCategory.Work -> "Работа"
+                    RecordCategory.Study -> "Учёба"
+                    RecordCategory.Personal -> "Личное"
+                }
+
+                // ensure defaults exist
+                if (!folderDAO.hasDefaultFolders(keycloakUserId)) {
+                    folderDAO.createDefaultFolders(keycloakUserId)
+                }
+
+                val userFolders = folderDAO.findByKeycloakUserId(keycloakUserId)
+                userFolders.firstOrNull { it.name.equals(targetFolderName, ignoreCase = true) }?.id
+            }
+
             if (resolvedFolderId == null) {
                 call.respond(
-                    HttpStatusCode.BadRequest,
-                    ErrorResponse("Folder ID is required", HttpStatusCode.BadRequest.value)
+                    HttpStatusCode.Forbidden,
+                    ErrorResponse("You don't have access to the provided folder and fallback by category failed", HttpStatusCode.Forbidden.value)
                 )
                 return@post
             }

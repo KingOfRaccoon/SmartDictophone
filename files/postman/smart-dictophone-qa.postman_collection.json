@@ -443,12 +443,12 @@
             },
             {
               "key": "category",
-              "value": "Work",
+              "value": "{{recordCategory}}",
               "type": "text"
             },
             {
               "key": "folderId",
-              "value": "{{folderId}}",
+              "value": "{{recordFolderId}}",
               "type": "text"
             },
             {
@@ -760,7 +760,7 @@
     },
     {
       "key": "folderId",
-      "value": "1"
+      "value": ""
     },
     {
       "key": "recordSearch",
@@ -784,11 +784,11 @@
     },
     {
       "key": "recordCategory",
-      "value": "MEETING"
+      "value": "Work"
     },
     {
       "key": "recordFolderId",
-      "value": "1"
+      "value": ""
     },
     {
       "key": "recordPlace",

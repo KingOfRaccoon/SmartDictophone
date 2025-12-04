@@ -239,8 +239,8 @@ paths:
                               - recordFile (file, required): аудиофайл в формате m4a
                               - name (string, required): название записи
                               - datetime (string, required): дата и время в формате ISO-8601
-                              - category (string, required): категория (MEETING, LECTURE, INTERVIEW, NOTE, OTHER)
-                              - folderId (integer, required): ID папки
+                              - category (string, required): категория (Work, Study, Personal)
+                              - folderId (integer, optional): ID папки. Если не передан или нет доступа, будет выбрана дефолтная папка по категории (Работа/Учёба/Личное)
                               - place (string, optional): место записи (можно передать координаты через запятую)
         required: true
         content:

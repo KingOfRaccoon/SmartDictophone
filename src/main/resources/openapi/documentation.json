@@ -333,7 +333,7 @@
           }
         } ],
         "requestBody" : {
-          "description" : "Multipart form data с полями:\n                    - recordFile (file, required): аудиофайл в формате m4a\n                    - name (string, required): название записи\n                    - datetime (string, required): дата и время в формате ISO-8601\n                    - category (string, required): категория (MEETING, LECTURE, INTERVIEW, NOTE, OTHER)\n                    - folderId (integer, required): ID папки\n                    - place (string, optional): место записи (можно передать координаты через запятую)",
+          "description" : "Multipart form data с полями:\n                    - recordFile (file, required): аудиофайл в формате m4a\n                    - name (string, required): название записи\n                    - datetime (string, required): дата и время в формате ISO-8601\n                    - category (string, required): категория (Work, Study, Personal)\n                    - folderId (integer, optional): ID папки. Если не передан или нет доступа, будет выбрана дефолтная папка по категории (Работа/Учёба/Личное)\n                    - place (string, optional): место записи (можно передать координаты через запятую)",
           "required" : true,
           "content" : {
             "multipart/form-data" : {
