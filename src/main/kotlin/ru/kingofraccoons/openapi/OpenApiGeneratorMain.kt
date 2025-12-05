@@ -295,6 +295,36 @@ private fun registerRecordEndpoints() {
         response(io.ktor.http.HttpStatusCode.NotFound, "Запись или аудиофайл не найдены")
         response(io.ktor.http.HttpStatusCode.Forbidden, "Нет доступа к записи")
     }
+
+    // POST /records/{id}/transcribe
+    apiDoc("POST", "/records/{id}/transcribe") {
+        summary = "Сохранить транскрипцию записи"
+        description = """
+            Принимает сегменты транскрипции от ML-сервиса, сохраняет их и заполняет поле description полным текстом транскрипции (сегменты сортируются по start и склеиваются пробелом).
+            Требуется API ключ в заголовке X-API-Key.
+        """.trimIndent()
+        tags = listOf("Records", "ML Service")
+
+        parameter("X-API-Key", "API ключ", required = true, location = ParameterLocation.HEADER)
+        parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+        requestBody(
+            description = """
+                JSON с сегментами транскрипции:
+                {
+                  "segments": [
+                    { "start": 0.0, "end": 1.2, "text": "Первый сегмент" },
+                    { "start": 1.2, "end": 2.5, "text": "Второй сегмент" }
+                  ]
+                }
+            """.trimIndent()
+        )
+
+        response(io.ktor.http.HttpStatusCode.OK, "Транскрипция сохранена, description обновлён")
+        response(io.ktor.http.HttpStatusCode.BadRequest, "Неверный ID записи или пустые сегменты")
+        response(io.ktor.http.HttpStatusCode.Unauthorized, "Неверный API ключ")
+        response(io.ktor.http.HttpStatusCode.NotFound, "Запись не найдена")
+    }
     
     // POST /transcribe
     apiDoc("POST", "/transcribe") {

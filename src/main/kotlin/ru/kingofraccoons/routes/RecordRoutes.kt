@@ -471,7 +471,8 @@ fun Route.recordRoutes(
                 summary = "Сохранить результат транскрипции"
                 description = """
                         Эндпоинт для ML сервиса транскрипции.
-                        Сохраняет сегменты транскрибированного текста для записи.
+                        Сохраняет сегменты транскрибированного текста для записи
+                        и заполняет поле description целым текстом транскрипции (сегменты сортируются по start и склеиваются пробелом).
                         Требуется API ключ в заголовке X-API-Key.
                 """.trimIndent()
                 tags = listOf("Records", "ML Service")
@@ -542,6 +543,13 @@ fun Route.recordRoutes(
 
         // Save transcription segments
         transcriptionDAO.createBatch(recordId, segments)
+
+        // Сохраняем полный текст транскрипции в description записи
+        val fullText = segments
+            .sortedBy { it.start }
+            .joinToString(" ") { it.text.trim() }
+            .ifBlank { null }
+        recordDAO.updateDescription(recordId, fullText)
 
         call.respond(HttpStatusCode.OK, mapOf("message" to "Transcription saved successfully"))
     }

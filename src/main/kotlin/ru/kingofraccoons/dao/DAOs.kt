@@ -217,6 +217,17 @@ class RecordDAO {
     }
 
     /**
+     * Обновляет только описание записи (используется при сохранении транскрипции)
+     */
+    suspend fun updateDescription(id: Long, description: String?): Record? = dbQuery {
+        Records.update({ Records.id eq id }) {
+            it[Records.description] = description
+            it[Records.updatedAt] = LocalDateTime.now()
+        }
+        findById(id)
+    }
+
+    /**
      * Удаление записи
      */
     suspend fun delete(id: Long): Boolean = dbQuery {
