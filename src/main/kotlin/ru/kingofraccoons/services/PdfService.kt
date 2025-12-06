@@ -4,33 +4,59 @@ import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
+import mu.KotlinLogging
+import org.apache.pdfbox.pdmodel.font.PDFont
+import org.apache.pdfbox.pdmodel.font.PDType0Font
 import org.apache.pdfbox.pdmodel.font.PDType1Font
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts
 import ru.kingofraccoons.models.TranscriptionSegment
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
+import java.io.File
+
+private val logger = KotlinLogging.logger {}
 
 class PdfService {
+
+    private data class PdfFonts(val regular: PDFont, val bold: PDFont)
+
+    private val regularFontBytes = loadFontBytes(
+        System.getenv("PDF_FONT_REGULAR") ?: "fonts/NotoSans-Regular.ttf"
+    )
+    private val boldFontBytes = loadFontBytes(
+        System.getenv("PDF_FONT_BOLD") ?: "fonts/NotoSans-Bold.ttf"
+    )
+
+    init {
+        if (regularFontBytes == null) {
+            logger.warn { "Regular PDF font not found; falling back to Standard 14 font (Latin only)." }
+        }
+        if (boldFontBytes == null) {
+            logger.warn { "Bold PDF font not found; falling back to regular font or Standard 14 font." }
+        }
+    }
+
     fun generateTranscriptionPdf(
         recordTitle: String,
         recordDatetime: String,
         segments: List<TranscriptionSegment>
     ): ByteArray {
         return PDDocument().use { document ->
+            val fonts = loadFonts(document)
             var page = PDPage(PDRectangle.A4)
             document.addPage(page)
 
             var contentStream = PDPageContentStream(document, page)
-            val font = PDType1Font(Standard14Fonts.FontName.TIMES_ROMAN)
-            val fontBold = PDType1Font(Standard14Fonts.FontName.TIMES_BOLD)
 
             var yPosition = 750f
             val margin = 50f
             val pageWidth = page.mediaBox.width - 2 * margin
             val lineHeight = 14f
+            val textFontSize = 10f
 
             // Title section
             contentStream.beginText()
-            contentStream.setFont(fontBold, 16f)
+            contentStream.setFont(fonts.bold, 16f)
             contentStream.newLineAtOffset(margin, yPosition)
             contentStream.showText(recordTitle)
             contentStream.endText()
@@ -38,7 +64,7 @@ class PdfService {
 
             // Metadata block
             contentStream.beginText()
-            contentStream.setFont(font, 12f)
+            contentStream.setFont(fonts.regular, 12f)
             contentStream.newLineAtOffset(margin, yPosition)
             contentStream.showText("Date: $recordDatetime")
             contentStream.endText()
@@ -55,13 +81,13 @@ class PdfService {
                 }
 
                 contentStream.beginText()
-                contentStream.setFont(fontBold, 10f)
+                contentStream.setFont(fonts.bold, textFontSize)
                 contentStream.newLineAtOffset(margin, yPosition)
                 contentStream.showText("[${formatTimestamp(segment.start)}]")
                 contentStream.endText()
                 yPosition -= lineHeight + 2
 
-                val wrappedLines = wrapText(segment.text, font, pageWidth - 50)
+                val wrappedLines = wrapText(segment.text, fonts.regular, textFontSize, pageWidth - 50)
                 for (line in wrappedLines) {
                     if (yPosition < 100f) {
                         contentStream.close()
@@ -72,7 +98,7 @@ class PdfService {
                     }
 
                     contentStream.beginText()
-                    contentStream.setFont(font, 10f)
+                    contentStream.setFont(fonts.regular, textFontSize)
                     contentStream.newLineAtOffset(margin + 10, yPosition)
                     contentStream.showText(line)
                     contentStream.endText()
@@ -106,22 +132,38 @@ class PdfService {
     /**
      * Splits plain text into lines that fit the available width of the PDF page.
      */
-    private fun wrapText(text: String, font: PDType1Font, maxWidth: Float): List<String> {
+    private fun wrapText(text: String, font: PDFont, fontSize: Float, maxWidth: Float): List<String> {
         if (text.isBlank()) return emptyList()
 
+        val hasWhitespace = text.any { it.isWhitespace() }
         val lines = mutableListOf<String>()
         var currentLine = StringBuilder()
 
-        text.split(" ").forEach { word ->
-            val candidate = if (currentLine.isEmpty()) word else "${currentLine} $word"
-            val candidateWidth = font.getStringWidth(candidate) / 1000 * 10f
+        val words = if (hasWhitespace) {
+            text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        } else {
+            listOf(text)
+        }
 
-            if (candidateWidth > maxWidth && currentLine.isNotEmpty()) {
+        for (word in words) {
+            val separator = if (currentLine.isEmpty()) "" else " "
+            val candidate = currentLine.toString() + separator + word
+            val candidateWidth = measureWidth(candidate, font, fontSize)
+
+            if (candidateWidth <= maxWidth) {
+                currentLine.append(separator).append(word)
+                continue
+            }
+
+            if (currentLine.isNotEmpty()) {
                 lines += currentLine.toString()
-                currentLine = StringBuilder(word)
-            } else {
-                if (currentLine.isNotEmpty()) currentLine.append(' ')
-                currentLine.append(word)
+                currentLine = StringBuilder()
+            }
+
+            val brokenWord = breakLongWord(word, font, fontSize, maxWidth)
+            if (brokenWord.isNotEmpty()) {
+                lines += brokenWord.dropLast(1)
+                currentLine = StringBuilder(brokenWord.last())
             }
         }
 
@@ -130,5 +172,66 @@ class PdfService {
         }
 
         return lines
+    }
+
+    private fun breakLongWord(
+        word: String,
+        font: PDFont,
+        fontSize: Float,
+        maxWidth: Float
+    ): List<String> {
+        val lines = mutableListOf<String>()
+        var current = StringBuilder()
+
+        for (char in word) {
+            val candidate = current.toString() + char
+            if (measureWidth(candidate, font, fontSize) <= maxWidth) {
+                current.append(char)
+            } else {
+                if (current.isNotEmpty()) {
+                    lines += current.toString()
+                }
+                current = StringBuilder(char.toString())
+            }
+        }
+
+        if (current.isNotEmpty()) {
+            lines += current.toString()
+        }
+
+        return lines
+    }
+
+    private fun measureWidth(text: String, font: PDFont, fontSize: Float): Float =
+        font.getStringWidth(text) / 1000 * fontSize
+
+    private fun loadFonts(document: PDDocument): PdfFonts {
+        val regular = regularFontBytes?.let {
+            PDType0Font.load(document, ByteArrayInputStream(it), true)
+        } ?: PDType1Font(Standard14Fonts.FontName.TIMES_ROMAN)
+
+        val bold = boldFontBytes?.let {
+            PDType0Font.load(document, ByteArrayInputStream(it), true)
+        } ?: when {
+            regularFontBytes != null -> regular // keep glyph coverage even if weight is not bold
+            else -> PDType1Font(Standard14Fonts.FontName.TIMES_BOLD)
+        }
+
+        return PdfFonts(regular, bold)
+    }
+
+    private fun loadFontBytes(path: String?): ByteArray? {
+        if (path.isNullOrBlank()) return null
+
+        // Try filesystem path first (env override), then classpath resource
+        val file = File(path)
+        if (file.exists() && file.isFile) {
+            return runCatching { file.readBytes() }
+                .onFailure { logger.warn(it) { "Failed to read font from $path" } }
+                .getOrNull()
+        }
+
+        val resourceStream = javaClass.classLoader.getResourceAsStream(path) ?: return null
+        return resourceStream.use { it.readBytes() }
     }
 }
