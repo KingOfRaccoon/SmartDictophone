@@ -20,8 +20,8 @@ class PdfService {
             document.addPage(page)
 
             var contentStream = PDPageContentStream(document, page)
-            val font = PDType1Font(Standard14Fonts.FontName.HELVETICA)
-            val fontBold = PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD)
+            val font = PDType1Font(Standard14Fonts.FontName.TIMES_ROMAN)
+            val fontBold = PDType1Font(Standard14Fonts.FontName.TIMES_BOLD)
 
             var yPosition = 750f
             val margin = 50f
