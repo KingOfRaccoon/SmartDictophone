@@ -13,6 +13,9 @@ import ru.kingofraccoons.models.TranscriptionSegment
 import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 private val logger = KotlinLogging.logger {}
 
@@ -66,7 +69,7 @@ class PdfService {
             contentStream.beginText()
             contentStream.setFont(fonts.regular, 12f)
             contentStream.newLineAtOffset(margin, yPosition)
-            contentStream.showText("Date: $recordDatetime")
+            contentStream.showText("Дата: ${formatDateRu(recordDatetime)}")
             contentStream.endText()
             yPosition -= 40f
 
@@ -127,6 +130,19 @@ class PdfService {
         } else {
             String.format("%02d:%02d", minutes, secs)
         }
+    }
+
+    private fun formatDateRu(raw: String): String {
+        val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
+
+        val parsed = sequenceOf<(String) -> LocalDateTime>(
+            { OffsetDateTime.parse(it).toLocalDateTime() },
+            { LocalDateTime.parse(it, DateTimeFormatter.ISO_DATE_TIME) }
+        ).firstNotNullOfOrNull { parser ->
+            runCatching { parser(raw) }.getOrNull()
+        }
+
+        return parsed?.format(formatter) ?: raw
     }
 
     /**
