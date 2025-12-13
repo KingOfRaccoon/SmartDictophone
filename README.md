@@ -1,16 +1,14 @@
 # Smart Dictophone API
 
-**Продакшен-готовый бэкенд API** на **Ktor 3.x** для мобильного приложения "Умный диктофон" с автоматической транскрипцией аудиозаписей и интеграцией Keycloak.
+Бэкенд API на **Kotlin + Ktor 3.x** для мобильного приложения «Умный диктофон»: хранение аудио в **S3/MinIO**, постановка задач на транскрипцию через **RabbitMQ**, интеграция с **Keycloak**, экспорт PDF и Swagger/OpenAPI.
 
 ## Возможности
 
-- **Безопасность**: Полная интеграция с Keycloak для аутентификации и авторизации пользователей
-- **Аудиозаписи**: Загрузка, хранение и управление аудиофайлами в формате M4A
-- **Транскрипция**: Автоматическое распознавание речи через ML сервис
-- **Организация**: Система папок для структурирования записей
-- **Экспорт**: Генерация PDF документов с транскрипциями
-- **Поиск**: Полнотекстовый поиск по записям и транскрипциям
-- **Аналитика**: Статистика использования и отчёты
+- **Keycloak**: регистрация/логин/refresh, валидация JWT по публичному ключу realm
+- **Папки**: дефолтные папки пользователя (`Работа/Учёба/Личное`) + CRUD
+- **Записи**: загрузка M4A, список с поиском/пагинацией, скачивание аудио и PDF
+- **Транскрипция**: API отправляет `recordId` в RabbitMQ, ML-сервис возвращает сегменты через `POST /records/{id}/transcribe` (защищено `X-API-Key`)
+- **Документация**: Swagger UI (`/swagger-ui`) и OpenAPI (`/openapi.json?raw=true`)
 
 ## Архитектура
 
@@ -30,245 +28,189 @@
 
 ## Технологический стек
 
-### Backend
-- **Kotlin** - основной язык разработки
-- **Ktor 3.3.0** - веб-фреймворк (Netty engine)
-- **Exposed ORM** - работа с базой данных
-- **HikariCP** - пул соединений с БД
-- **Kotlin Coroutines** - асинхронное программирование
-
-### Безопасность
-- **Keycloak** - система аутентификации и авторизации
-- **JWT** - токены доступа
-- **CORS** - настройка междоменных запросов
-
-### Хранение данных
-- **PostgreSQL** - основная база данных
-- **AWS S3 / MinIO** - хранение аудиофайлов
-- **Apache PDFBox** - генерация PDF
-
-### Документация
-- **OpenAPI 3.1** - спецификация API
-- **Swagger UI** - интерактивная документация
-
-## Системные требования
-
-### Минимальные требования
-- **JDK 17+**
-- **RAM**: 2GB+
-- **Disk**: 10GB+ свободного места
-- **PostgreSQL 14+**
-- **Keycloak 23+**
-
-### Рекомендуемые требования
-- **JDK 21** (LTS)
-- **RAM**: 4GB+
-- **Disk**: 50GB+ (включая хранение аудиофайлов)
-- **PostgreSQL 16+**
-- **Keycloak 25+**
+- **Kotlin**, **Ktor (Netty)**, **Exposed**, **HikariCP**
+- **PostgreSQL**
+- **Keycloak** (JWT, public key realm)
+- **MinIO / S3**
+- **RabbitMQ**
+- **PDFBox**
+- **OpenAPI 3.1 + Swagger UI**
 
 ## Быстрый запуск
 
-### 1. Подготовка окружения
+### 1) Запуск стенда через Docker Compose (рекомендуется)
 
 ```bash
-# Клонирование репозитория
-git clone https://github.com/KingOfRaccoon/SmartDictophone.git
-cd SmartDictophone
-
-# Копирование и настройка переменных окружения
-cp .env.example .env
-# Отредактируйте .env файл согласно вашему окружению
+docker compose up -d --build
 ```
 
-### 2. Запуск с Docker Compose
+Или используйте скрипт:
 
 ```bash
-# Запуск всех сервисов (PostgreSQL, Keycloak, MinIO, RabbitMQ, API)
-docker-compose up -d
-
-# Проверка статуса сервисов
-docker-compose ps
-
-# Просмотр логов
-docker-compose logs -f api
+./start.sh
 ```
 
-> Сервис `ml-service` теперь автоматически собирается из публичного репозитория [`mrkuloff/voice-recorder-ml-service`](https://github.com/mrkuloff/voice-recorder-ml-service) (ветка `main`). При первом запуске выполните `docker-compose build ml-service`, чтобы локально подготовить образ; дальнейшие `docker-compose up` будут переиспользовать его из кэша.
+> `start.sh` делает `docker compose down -v` и полностью пересоздаёт volumes (данные БД/MinIO будут удалены).
 
-### 3. Ручная сборка и запуск
+> `ml-service` собирается из публичного репозитория `mrkuloff/voice-recorder-ml-service` (Git context в `docker-compose.yml`). Для сборки нужен доступ к сети и включённый BuildKit.
+
+### 2) Проверка здоровья
 
 ```bash
-# Сборка проекта
-./gradlew build
+./scripts/health-check.sh
+```
 
-# Запуск приложения
+### 3) Полезные адреса (по умолчанию)
+
+- API: `http://localhost:8888`
+- Swagger UI: `http://localhost:8888/swagger-ui`
+- OpenAPI JSON (сырой): `http://localhost:8888/openapi.json?raw=true`
+- Keycloak: `http://localhost:8090` (admin/admin)
+- MinIO Console: `http://localhost:9001` (minioadmin/minioadmin)
+- RabbitMQ Management: `http://localhost:15672` (rmuser/rmpassword)
+
+## Локальный запуск API (без Docker для приложения)
+
+Поднимите инфраструктуру (PostgreSQL, Keycloak, MinIO, RabbitMQ) через Compose и запустите приложение локально:
+
+```bash
 ./gradlew run
-
-# Альтернативно: запуск JAR
-java -jar build/libs/smart-dictophone-1.0.0.jar
 ```
+
+Конфигурация берётся из переменных окружения и `src/main/resources/application.yaml`. Пример переменных — в `.env.example`.
 
 ## Конфигурация
 
-### Переменные окружения
-
-Основные переменные для продакшена:
+Основные переменные окружения (см. `src/main/resources/application.yaml`):
 
 ```bash
+# Server
+PORT=8888
+PUBLIC_BASE_URL=https://api.smartdictophone.com
+
 # Database
-DATABASE_URL=jdbc:postgresql://localhost:5432/smartdictophone
-DATABASE_USER=smartdictophone
-DATABASE_PASSWORD=your_secure_password
+DATABASE_URL=jdbc:postgresql://postgres:5432/smart_dictophone
+DATABASE_DRIVER=org.postgresql.Driver
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_MAX_POOL_SIZE=10
 
 # Keycloak
-KEYCLOAK_SERVER_URL=https://auth.yourcompany.com
-KEYCLOAK_REALM=smartdictophone
-KEYCLOAK_CLIENT_ID=smartdictophone-backend
-KEYCLOAK_CLIENT_SECRET=your_client_secret
+KEYCLOAK_SERVER_URL=http://keycloak:8080
+KEYCLOAK_PUBLIC_URL=http://localhost:8090
+KEYCLOAK_REALM=smart-dictophone
+KEYCLOAK_CLIENT_ID=smart-dictophone-backend
+KEYCLOAK_CLIENT_SECRET=your-backend-client-secret
+KEYCLOAK_FRONTEND_CLIENT_ID=smart-dictophone-frontend
+KEYCLOAK_ADMIN_USERNAME=admin
+KEYCLOAK_ADMIN_PASSWORD=admin
 
-# S3 Storage
-S3_ENDPOINT=https://s3.yourcompany.com
-S3_ACCESS_KEY=your_access_key
-S3_SECRET_KEY=your_secret_key
-S3_BUCKET_NAME=smartdictophone-audio
+# ML callback protection
+API_KEY=change-me
 
-# API Configuration
-API_KEY=your_ml_service_api_key
-CORS_ALLOWED_HOSTS=https://yourapp.com,https://admin.yourapp.com
-```
+# S3/MinIO
+S3_ENDPOINT=http://minio:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=smart-dictophone-audio
 
-### Настройка Keycloak
+# RabbitMQ
+RABBITMQ_HOST=rabbitmq
+RABBITMQ_PORT=5672
+RABBITMQ_USER=rmuser
+RABBITMQ_PASSWORD=rmpassword
+RABBITMQ_QUEUE=audio-transcription
 
-1. **Создание realm**: Создайте realm с именем `smartdictophone`
-2. **Настройка клиента**: 
-   - Client ID: `smartdictophone-backend`
-   - Client Type: `confidential`
-   - Valid redirect URIs: `https://yourapp.com/*`
-3. **Получение секрета**: Скопируйте Client Secret из вкладки Credentials
-
-### Настройка базы данных
-
-```sql
--- Создание базы данных
-CREATE DATABASE smartdictophone;
-CREATE USER smartdictophone WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE smartdictophone TO smartdictophone;
-
--- Миграции выполнятся автоматически при запуске приложения
+# PDF fonts (optional)
+PDF_FONT_REGULAR=fonts/NotoSans-Regular.ttf
+PDF_FONT_BOLD=fonts/NotoSans-Bold.ttf
 ```
 
 ### PDF шрифты
 
-- Для корректного рендеринга кириллицы и других Unicode-языков добавьте TTF/OTF в `src/main/resources/fonts/` (например, `NotoSans-Regular.ttf` и `NotoSans-Bold.ttf`).
-- Альтернативно укажите пути к шрифтам через переменные окружения `PDF_FONT_REGULAR` и `PDF_FONT_BOLD` (абсолютный или относительный путь к файлам).
-- Если шрифты не заданы, используется стандартный Times New Roman из PDFBox, который ограничен латиницей.
+- Для корректного рендеринга кириллицы добавьте TTF/OTF в `src/main/resources/fonts/` (например, `NotoSans-Regular.ttf` и `NotoSans-Bold.ttf`).
+- Либо укажите пути через `PDF_FONT_REGULAR` и `PDF_FONT_BOLD` (абсолютный или относительный путь).
+- Если шрифты не найдены, используется стандартный шрифт PDFBox (латиница).
 
-## 📚 API Документация
+## Keycloak
 
-### Swagger UI
-После запуска приложения документация доступна по адресу:
+- В `docker-compose.yml` realm импортируется автоматически из `keycloak/smart-dictophone-realm.json`.
+- Admin UI: `http://localhost:8090` (admin/admin)
+- Получить client secret можно скриптом `./scripts/get-client-secret.sh` (нужны `curl` и `jq`).
+
+## API Документация
+
 - **Swagger UI**: `http://localhost:8888/swagger-ui`
-- **OpenAPI JSON**: `http://localhost:8888/openapi.json`
+- **OpenAPI JSON**: `http://localhost:8888/openapi.json?raw=true`
 
-### Основные эндпоинты
+## Основные эндпоинты
 
-#### Аутентификация
-- `POST /register` - Регистрация пользователя
-- `POST /login` - Вход в систему
-- `POST /refresh` - Обновление токена
-- `POST /loginOnToken` - Проверка токена
+### Аутентификация
+- `POST /register` — регистрация пользователя в Keycloak
+- `POST /login` — вход по email/паролю (через Keycloak)
+- `POST /refresh` — обновление access token (через refresh token)
+- `POST /loginOnToken` — проверка токена и получение базовой информации
 
-#### Пользователи
-- `GET /recordInfo` - Профиль и статистика пользователя
+### Пользователь
+- `GET /recordInfo` — профиль и статистика (создаёт дефолтные папки при первом вызове)
 
-#### Папки
-- `GET /folders` - Список папок пользователя
-- `POST /folders` - Создание новой папки
+### Папки
+- `GET /folders` — список папок
+- `POST /folders` — создать папку
+- `PUT /folders/{id}` — обновить папку
+- `DELETE /folders/{id}` — удалить папку (в текущей реализации удаляет записи папки и их аудио в S3)
 
-#### Записи
-- `GET /records` - Список записей (с поиском и пагинацией)
-- `POST /records` - Загрузка новой записи
-- `GET /records/{id}/audio` - Скачивание аудио
-- `GET /records/{id}/pdf` - Скачивание PDF с транскрипцией
+### Записи
+- `GET /records` — список записей (`search`, `folderId`, `page`, `size`)
+- `POST /records` — загрузка новой записи (multipart: `recordFile`, `name`, `datetime`, `category`, `folderId?`, `place?`)
+- `GET /records/{id}/audio` — скачать аудио
+- `GET /records/{id}/pdf` — скачать PDF с транскрипцией
 
-#### Система
-- `GET /health` - Проверка состояния сервиса
-- `GET /` - Информация об API
+### ML сервис
+- `POST /records/{id}/transcribe` — сохранить сегменты транскрипции (требуется `X-API-Key`)
+
+### Система
+- `GET /health` — healthcheck
+- `GET /` — краткая информация об API
 
 ## QA Postman Collection
 
-- **Локальный файл**: `files/postman/smart-dictophone-qa.postman_collection.json` содержит плоскую коллекцию со сценарием smoke-тестов (система, аутентификация, папки, записи).
-- **Импорт**: `File → Import → Upload Files` в Postman и выберите указанный JSON. После импорта создайте окружение с переменными из коллекции (`baseUrl`, `userEmail`, `userPassword`, `recordFile` и т. д.) или отредактируйте значения прямо в разделе Variables.
-- **Запуск**: используйте Runner/Postman CLI, выбрав созданное окружение. Для CLI можно установить [newman](https://github.com/postmanlabs/newman) и выполнить `npx newman run files/postman/smart-dictophone-qa.postman_collection.json -e <env.json>`.
-- **Что настроить**: проверьте `baseUrl` (по умолчанию `http://localhost:8888`), реальные учётные данные (`userPassword`, `userEmail`), а также путь к тестовому аудиофайлу для `recordFile` перед запуском записи.
+- **Файл**: `files/postman/smart-dictophone-qa.postman_collection.json`
+- **Запуск**: `npx newman run files/postman/smart-dictophone-qa.postman_collection.json -e <env.json>`
+
+## Сборка и тесты
+
+```bash
+./gradlew test
+./gradlew build
+./gradlew buildFatJar
+java -jar build/libs/smart_dictophone-all.jar
+```
 
 ## Безопасность
 
-### JWT Токены
-- **Access токен**: Время жизни 15 минут
-- **Refresh токен**: Время жизни 7 дней
-- **Алгоритм**: RS256 (Keycloak публичные ключи)
+- JWT токены выдаёт Keycloak, время жизни определяется настройками realm в Keycloak.
+- Эндпоинт `POST /records/{id}/transcribe` защищён ключом `X-API-Key` (значение — `API_KEY`).
+- CORS сейчас настроен максимально либерально (`anyHost()`); для продакшена стоит ограничить домены.
 
-### API Keys
-ML сервис использует отдельный API ключ в заголовке `X-API-Key`.
+## Развёртывание
 
-### CORS
-Настроены разрешённые домены для междоменных запросов.
-
-## Мониторинг и логирование
-
-### Health Check
 ```bash
-# Проверка состояния API
-curl http://localhost:8888/health
-
-# Ответ: {"status":"healthy"}
-```
-
-### Логи
-Логи структурированы и включают:
-- HTTP запросы и ответы
-- Ошибки аутентификации
-- SQL запросы (в debug режиме)
-- Интеграция с внешними сервисами
-
-### Скрипты мониторинга
-- `scripts/health-check.sh` - Проверка доступности API
-- `scripts/get-client-secret.sh` - Получение секрета Keycloak клиента
-
-## Развёртывание в продакшене
-
-### Docker
-```bash
-# Сборка Docker образа
 docker build -t smartdictophone-api .
-
-# Запуск контейнера
-docker run -d \
-  --name smartdictophone-api \
-  --env-file .env \
-  -p 8888:8888 \
-  smartdictophone-api
+docker run -d --name smartdictophone-api --env-file .env -p 8888:8888 smartdictophone-api
 ```
 
-### Kubernetes
-Пример конфигурации для Kubernetes доступен в файлах:
-- `k8s/deployment.yaml`
-- `k8s/service.yaml`
-- `k8s/configmap.yaml`
-
-### Nginx
-Рекомендуемая конфигурация обратного прокси:
+Пример конфигурации обратного прокси (Nginx):
 
 ```nginx
 server {
     listen 443 ssl;
     server_name api.yourcompany.com;
-    
+
     ssl_certificate /path/to/certificate.crt;
     ssl_certificate_key /path/to/private.key;
-    
+
     location / {
         proxy_pass http://localhost:8888;
         proxy_set_header Host $host;
@@ -279,23 +221,6 @@ server {
 }
 ```
 
-## Лицензия
-
-Этот проект лицензирован под MIT License. См. файл [LICENSE](LICENSE) для деталей.
-
 ## Поддержка
 
-### Документация
-- **API Reference**: `/swagger-ui`
-- **OpenAPI Spec**: `/openapi.json`
-
-### Контакты
-- **Email**: support@smartdictophone.com
-- **Issues**: [GitHub Issues](https://github.com/KingOfRaccoon/SmartDictophone/issues)
-
-### Обратная связь
-Мы ценим вашу обратную связь! Если у вас есть предложения по улучшению или вы нашли баг, пожалуйста, создайте issue в GitHub или свяжитесь с нами по email.
-
----
-
-**Smart Dictophone API** - Надёжное решение для распознавания и организации аудиозаписей 
+- Issues: https://github.com/KingOfRaccoon/SmartDictophone/issues
