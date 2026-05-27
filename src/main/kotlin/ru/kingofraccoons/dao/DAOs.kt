@@ -26,7 +26,7 @@ class FolderDAO {
      * Создание дефолтных папок для пользователя при первой авторизации
      */
     suspend fun createDefaultFolders(keycloakUserId: String): List<Folder> = dbQuery {
-        val defaultFolders = listOf("Работа", "Учёба", "Личное")
+        val defaultFolders = RecordCategory.entries.map { it.displayName }
         defaultFolders.mapNotNull { folderName ->
             val insertStatement = Folders.insert {
                 it[Folders.keycloakUserId] = keycloakUserId
@@ -138,6 +138,7 @@ class RecordDAO {
         keycloakUserId: String,
         search: String?,
         folderId: Long?,
+        category: RecordCategory?,
         page: Int,
         size: Int
     ): Pair<List<Record>, Long> = dbQuery {
@@ -145,7 +146,6 @@ class RecordDAO {
             .selectAll()
             .where { Folders.keycloakUserId eq keycloakUserId }
 
-        // Apply filters
         search?.let {
             query.andWhere {
                 (Records.title like "%$it%") or (Records.description like "%$it%")
@@ -156,6 +156,10 @@ class RecordDAO {
             query.andWhere { Records.folderId eq it }
         }
 
+        category?.let {
+            query.andWhere { Records.category eq it }
+        }
+
         val totalCount = query.count()
         val records = query
             .orderBy(Records.datetime to SortOrder.DESC)
@@ -164,6 +168,27 @@ class RecordDAO {
             .map(::resultRowToRecord)
 
         records to totalCount
+    }
+
+    /**
+     * Частичное обновление записи (только переданные поля)
+     */
+    suspend fun updatePartial(
+        id: Long,
+        title: String?,
+        description: String?,
+        category: RecordCategory?
+    ): Record? = dbQuery {
+        val hasUpdates = title != null || description != null || category != null
+        if (hasUpdates) {
+            Records.update({ Records.id eq id }) {
+                title?.let { v -> it[Records.title] = v }
+                description?.let { v -> it[Records.description] = v }
+                category?.let { v -> it[Records.category] = v }
+                it[Records.updatedAt] = LocalDateTime.now()
+            }
+        }
+        findById(id)
     }
 
     /**
@@ -276,5 +301,119 @@ class TranscriptionDAO {
         start = row[TranscriptionSegments.start],
         end = row[TranscriptionSegments.end],
         text = row[TranscriptionSegments.text]
+    )
+}
+
+class UserProfileDAO {
+    suspend fun findByKeycloakUserId(keycloakUserId: String): UserProfile? = dbQuery {
+        UserProfiles.selectAll().where { UserProfiles.keycloakUserId eq keycloakUserId }
+            .map(::resultRowToUserProfile)
+            .singleOrNull()
+    }
+
+    suspend fun create(
+        keycloakUserId: String,
+        telegram: String? = null,
+        avatarUrl: String? = null,
+        emailForTranscripts: String? = null
+    ): UserProfile = dbQuery {
+        val insertStatement = UserProfiles.insert {
+            it[UserProfiles.keycloakUserId] = keycloakUserId
+            it[UserProfiles.telegram] = telegram
+            it[UserProfiles.avatarUrl] = avatarUrl
+            it[UserProfiles.emailForTranscripts] = emailForTranscripts
+        }
+        insertStatement.resultedValues?.singleOrNull()?.let(::resultRowToUserProfile)
+            ?: throw IllegalStateException("Failed to create user profile")
+    }
+
+    suspend fun findOrCreate(keycloakUserId: String): UserProfile =
+        findByKeycloakUserId(keycloakUserId) ?: create(keycloakUserId)
+
+    suspend fun update(
+        keycloakUserId: String,
+        telegram: String? = null,
+        avatarUrl: String? = null,
+        emailForTranscripts: String? = null
+    ): UserProfile? = dbQuery {
+        val hasUpdates = telegram != null || avatarUrl != null || emailForTranscripts != null
+        if (hasUpdates) {
+            UserProfiles.update({ UserProfiles.keycloakUserId eq keycloakUserId }) {
+                telegram?.let { v -> it[UserProfiles.telegram] = v }
+                avatarUrl?.let { v -> it[UserProfiles.avatarUrl] = v }
+                emailForTranscripts?.let { v -> it[UserProfiles.emailForTranscripts] = v }
+                it[UserProfiles.updatedAt] = LocalDateTime.now()
+            }
+        }
+        findByKeycloakUserId(keycloakUserId)
+    }
+
+    suspend fun updateAvatarUrl(keycloakUserId: String, avatarUrl: String): UserProfile? = dbQuery {
+        UserProfiles.update({ UserProfiles.keycloakUserId eq keycloakUserId }) {
+            it[UserProfiles.avatarUrl] = avatarUrl
+            it[UserProfiles.updatedAt] = LocalDateTime.now()
+        }
+        findByKeycloakUserId(keycloakUserId)
+    }
+
+    private fun resultRowToUserProfile(row: ResultRow) = UserProfile(
+        id = row[UserProfiles.id].value,
+        keycloakUserId = row[UserProfiles.keycloakUserId],
+        telegram = row[UserProfiles.telegram],
+        avatarUrl = row[UserProfiles.avatarUrl],
+        emailForTranscripts = row[UserProfiles.emailForTranscripts],
+        createdAt = row[UserProfiles.createdAt].toString(),
+        updatedAt = row[UserProfiles.updatedAt].toString()
+    )
+}
+
+class SharedRecordDAO {
+    suspend fun share(recordId: Long, sharedByUserId: String, sharedWithUserId: String, role: String = "viewer"): SharedRecord = dbQuery {
+        SharedRecords.upsert(SharedRecords.recordId, SharedRecords.sharedWithUserId) {
+            it[SharedRecords.recordId] = recordId
+            it[SharedRecords.sharedByUserId] = sharedByUserId
+            it[SharedRecords.sharedWithUserId] = sharedWithUserId
+            it[SharedRecords.role] = role
+        }
+
+        SharedRecords.selectAll().where {
+            (SharedRecords.recordId eq recordId) and (SharedRecords.sharedWithUserId eq sharedWithUserId)
+        }.singleOrNull()?.let(::resultRowToSharedRecord)
+            ?: throw IllegalStateException("Failed to create shared record")
+    }
+
+    suspend fun findByRecordId(recordId: Long): List<SharedRecord> = dbQuery {
+        SharedRecords.selectAll().where { SharedRecords.recordId eq recordId }
+            .map(::resultRowToSharedRecord)
+    }
+
+    suspend fun findBySharedWithUserId(userId: String): List<SharedRecord> = dbQuery {
+        SharedRecords.selectAll().where { SharedRecords.sharedWithUserId eq userId }
+            .map(::resultRowToSharedRecord)
+    }
+
+    suspend fun delete(recordId: Long, sharedWithUserId: String): Boolean = dbQuery {
+        SharedRecords.deleteWhere {
+            (SharedRecords.recordId eq recordId) and (SharedRecords.sharedWithUserId eq sharedWithUserId)
+        } > 0
+    }
+
+    suspend fun deleteByRecordId(recordId: Long): Int = dbQuery {
+        SharedRecords.deleteWhere { SharedRecords.recordId eq recordId }
+    }
+
+    suspend fun hasAccess(recordId: Long, userId: String): Boolean = dbQuery {
+        SharedRecords.selectAll().where {
+            (SharedRecords.recordId eq recordId) and (SharedRecords.sharedWithUserId eq userId)
+        }.count() > 0
+    }
+
+    private fun resultRowToSharedRecord(row: ResultRow) = SharedRecord(
+        id = row[SharedRecords.id].value,
+        recordId = row[SharedRecords.recordId].value,
+        sharedByUserId = row[SharedRecords.sharedByUserId],
+        sharedWithUserId = row[SharedRecords.sharedWithUserId],
+        role = row[SharedRecords.role],
+        createdAt = row[SharedRecords.createdAt].toString()
     )
 }

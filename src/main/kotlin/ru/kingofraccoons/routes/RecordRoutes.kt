@@ -19,6 +19,7 @@ import ru.kingofraccoons.models.PaginatedResponse
 import ru.kingofraccoons.models.Record
 import ru.kingofraccoons.models.RecordCategory
 import ru.kingofraccoons.models.TranscribeRequest
+import ru.kingofraccoons.models.UpdateRecordRequest
 import ru.kingofraccoons.openapi.ParameterLocation
 import ru.kingofraccoons.openapi.apiDoc
 import ru.kingofraccoons.services.PdfService
@@ -52,30 +53,35 @@ fun Route.recordRoutes(
             parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
             parameter("search", "Поисковый запрос по названию или описанию", required = false, type = "string", location = ParameterLocation.QUERY)
             parameter("folderId", "ID папки для фильтрации", required = false, type = "integer", location = ParameterLocation.QUERY)
+            parameter("category", "Категория для фильтрации (Work, Study, Personal)", required = false, type = "string", location = ParameterLocation.QUERY)
             parameter("page", "Номер страницы (начиная с 0)", required = false, type = "integer", location = ParameterLocation.QUERY)
             parameter("size", "Количество элементов на странице (по умолчанию 20)", required = false, type = "integer", location = ParameterLocation.QUERY)
 
             response(HttpStatusCode.OK, "Список записей с пагинацией")
             response(HttpStatusCode.Unauthorized, "Недействительный токен")
         }
-        
+
         /**
          * GET /records - получить записи пользователя с поиском и пагинацией
          */
         get("/records") {
             val principal = call.principal<JWTPrincipal>()
                 ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
-            
+
             val keycloakUserId = principal.payload.subject
-            
+
             val search = call.request.queryParameters["search"]
             val folderId = call.request.queryParameters["folderId"]?.toLongOrNull()
+            val categoryRaw = call.request.queryParameters["category"]
+            val category = categoryRaw?.let { raw ->
+                RecordCategory.entries.firstOrNull { entry -> entry.name.equals(raw, ignoreCase = true) }
+            }
             val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 0
             val size = call.request.queryParameters["size"]?.toIntOrNull() ?: 20
-            
-            val (records, totalElements) = recordDAO.search(keycloakUserId, search, folderId, page, size)
+
+            val (records, totalElements) = recordDAO.search(keycloakUserId, search, folderId, category, page, size)
             val totalPages = ((totalElements + size - 1) / size).toInt()
-            
+
             call.respond(
                 HttpStatusCode.OK,
                 PaginatedResponse(
@@ -197,11 +203,7 @@ fun Route.recordRoutes(
                 else -> if (existingFolder.keycloakUserId == keycloakUserId) existingFolder.id else null
             } ?: run {
                 // fall back to default folder based on category
-                val targetFolderName = when (category!!) {
-                    RecordCategory.Work -> "Работа"
-                    RecordCategory.Study -> "Учёба"
-                    RecordCategory.Personal -> "Личное"
-                }
+                val targetFolderName = category!!.displayName
 
                 // ensure defaults exist
                 if (!folderDAO.hasDefaultFolders(keycloakUserId)) {
@@ -352,7 +354,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!recordBelongsToUser(record, keycloakUserId, folderDAO)) {
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -420,7 +422,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!recordBelongsToUser(record, keycloakUserId, folderDAO)) {
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -465,7 +467,207 @@ fun Route.recordRoutes(
             }
         }
     }
-    
+
+        // API Key protected endpoint
+        apiDoc("GET", "/records/{id}") {
+            summary = "Получить запись по ID"
+            description = "Возвращает полную информацию об аудиозаписи по её ID"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "Данные записи")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        /**
+         * GET /records/{id} - получить одну запись по ID
+         */
+        get("/records/{id}") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@get
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@get
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@get
+            }
+
+            call.respond(HttpStatusCode.OK, record)
+        }
+
+        apiDoc("PUT", "/records/{id}") {
+            summary = "Обновить запись"
+            description = "Обновляет название, описание и/или категорию записи"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "Запись успешно обновлена")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи или данные")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        /**
+         * PUT /records/{id} - обновить запись (частичное обновление)
+         */
+        put("/records/{id}") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@put call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@put
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@put
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@put
+            }
+
+            val request = call.receiveOrBadRequest<UpdateRecordRequest>() ?: return@put
+            val category = request.category?.let {
+                RecordCategory.entries.firstOrNull { c -> c.name.equals(it, ignoreCase = true) }
+            }
+
+            val updatedRecord = recordDAO.updatePartial(
+                id = recordId,
+                title = request.title,
+                description = request.description,
+                category = category
+            )
+
+            if (updatedRecord == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Failed to update record", 400))
+                return@put
+            }
+
+            call.respond(HttpStatusCode.OK, updatedRecord)
+        }
+
+        apiDoc("DELETE", "/records/{id}") {
+            summary = "Удалить запись"
+            description = "Удаляет аудиозапись, её транскрипцию и аудиофайл из хранилища"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.NoContent, "Запись успешно удалена")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        /**
+         * DELETE /records/{id} - удалить запись
+         */
+        delete("/records/{id}") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@delete call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@delete
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@delete
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@delete
+            }
+
+            transcriptionDAO.deleteByRecordId(recordId)
+            if (record.audioUrl.isNotBlank()) {
+                s3Service.deleteFileByUrl(record.audioUrl)
+            }
+            val deleted = recordDAO.delete(recordId)
+            if (deleted) {
+                call.respond(HttpStatusCode.NoContent)
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Failed to delete record", 500))
+            }
+        }
+
+        apiDoc("GET", "/records/{id}/segments") {
+            summary = "Получить сегменты транскрипции"
+            description = "Возвращает список временных сегментов транскрипции для записи"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "Список сегментов транскрипции")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        /**
+         * GET /records/{id}/segments - получить сегменты транскрипции
+         */
+        get("/records/{id}/segments") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@get
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@get
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@get
+            }
+
+            val segments = transcriptionDAO.findByRecordId(recordId)
+            call.respond(HttpStatusCode.OK, segments)
+        }
+
         // API Key protected endpoint
         apiDoc("POST", "/records/{id}/transcribe") {
                 summary = "Сохранить результат транскрипции"
@@ -555,16 +757,3 @@ fun Route.recordRoutes(
     }
 }
 
-/**
- * Проверяет что запись принадлежит текущему пользователю
- * Записи без папки считаются недоступными
- */
-private suspend fun recordBelongsToUser(
-    record: Record,
-    keycloakUserId: String,
-    folderDAO: FolderDAO
-): Boolean {
-    val folderId = record.folderId ?: return false
-    val folder = folderDAO.findById(folderId) ?: return false
-    return folder.keycloakUserId == keycloakUserId
-}

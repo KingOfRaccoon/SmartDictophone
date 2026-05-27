@@ -79,6 +79,11 @@ dependencies {
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.h2)
 
+    // Testcontainers
+    testImplementation(libs.testcontainers.core)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
+
     // Swagger UI
     implementation("io.ktor:ktor-server-swagger")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")

@@ -291,13 +291,13 @@ class KeycloakService(config: Application) {
             val adminToken = getAdminToken().getOrElse {
                 return Result.failure(Exception("Failed to get admin token: ${it.message}"))
             }
-            
+
             val response = httpClient.get("$serverUrl/admin/realms/$realm/users") {
                 bearerAuth(adminToken)
                 parameter("email", email)
                 parameter("exact", true)
             }
-            
+
             if (response.status.isSuccess()) {
                 val users = response.body<List<KeycloakUserRepresentation>>()
                 Result.success(users.firstOrNull())
@@ -308,6 +308,13 @@ class KeycloakService(config: Application) {
             logger.error(e) { "Error searching user in Keycloak" }
             Result.failure(e)
         }
+    }
+
+    /**
+     * Get user ID by email (convenience method)
+     */
+    suspend fun getUserIdByEmail(email: String): String? {
+        return getUserByEmail(email).getOrNull()?.id
     }
     
     /**

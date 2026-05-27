@@ -52,6 +52,8 @@ fun Application.module() {
     val folderDAO = FolderDAO()
     val recordDAO = RecordDAO()
     val transcriptionDAO = TranscriptionDAO()
+    val userProfileDAO = UserProfileDAO()
+    val sharedRecordDAO = SharedRecordDAO()
     
     // API Key from config
     val apiKey = environment.config.config("api").property("key").getString()
@@ -254,9 +256,10 @@ fun Application.module() {
         
         // Application routes
         authRoutes(keycloakService)
-        userRoutes(recordDAO, folderDAO, keycloakService)
+        userRoutes(recordDAO, folderDAO, userProfileDAO, keycloakService, s3Service)
         recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey)
         folderRoutes(folderDAO, recordDAO, transcriptionDAO, s3Service)
+        shareRoutes(sharedRecordDAO, recordDAO, folderDAO, keycloakService)
         
         get("/") {
             call.respondText(

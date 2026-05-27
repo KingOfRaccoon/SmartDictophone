@@ -8,6 +8,15 @@ import java.time.LocalDateTime
 // Database Tables
 // Users table removed - using Keycloak user IDs directly
 
+object UserProfiles : LongIdTable("user_profiles") {
+    val keycloakUserId = varchar("keycloak_user_id", 255).uniqueIndex()
+    val telegram = varchar("telegram", 255).nullable()
+    val avatarUrl = varchar("avatar_url", 512).nullable()
+    val emailForTranscripts = varchar("email_for_transcripts", 255).nullable()
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
+    val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
+}
+
 object Folders : LongIdTable("folders") {
     val keycloakUserId = varchar("keycloak_user_id", 255).index() // Keycloak user ID
     val name = varchar("name", 255)
@@ -17,8 +26,8 @@ object Folders : LongIdTable("folders") {
     val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
 }
 
-enum class RecordCategory {
-    Work, Study, Personal
+enum class RecordCategory(val displayName: String) {
+    Work("Работа"), Study("Учёба"), Personal("Личное")
 }
 
 object Records : LongIdTable("records") {
@@ -40,6 +49,18 @@ object TranscriptionSegments : LongIdTable("transcription_segments") {
     val start = float("start")
     val end = float("end")
     val text = text("text")
+}
+
+object SharedRecords : LongIdTable("shared_records") {
+    val recordId = reference("record_id", Records)
+    val sharedByUserId = varchar("shared_by_user_id", 255)
+    val sharedWithUserId = varchar("shared_with_user_id", 255)
+    val role = varchar("role", 20).default("viewer")
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
+
+    init {
+        uniqueIndex("shared_records_record_user_idx", recordId, sharedWithUserId)
+    }
 }
 
 // DTOs for API
@@ -87,11 +108,67 @@ data class TranscriptionSegment(
 @Serializable
 data class UserInfo(
     val keycloakUserId: String,
-    val username: String,  // Оригинальный username пользователя
+    val username: String,
     val email: String?,
     val fullName: String?,
     val countRecords: Int,
-    val countMinutes: Int
+    val countMinutes: Int,
+    val telegram: String? = null,
+    val avatarUrl: String? = null,
+    val emailForTranscripts: String? = null
+)
+
+@Serializable
+data class UserProfile(
+    val id: Long,
+    val keycloakUserId: String,
+    val telegram: String?,
+    val avatarUrl: String?,
+    val emailForTranscripts: String?,
+    val createdAt: String,
+    val updatedAt: String
+)
+
+@Serializable
+data class UpdateProfileRequest(
+    val fullName: String? = null,
+    val telegram: String? = null,
+    val emailForTranscripts: String? = null
+)
+
+@Serializable
+data class UpdateTranscriptEmailRequest(
+    val email: String
+)
+
+@Serializable
+data class StorageInfo(
+    val storageUsedBytes: Long,
+    val recordCount: Int
+)
+
+@Serializable
+data class SharedRecord(
+    val id: Long,
+    val recordId: Long,
+    val sharedByUserId: String,
+    val sharedWithUserId: String,
+    val role: String,
+    val createdAt: String
+)
+
+@Serializable
+data class ShareRecordRequest(
+    val email: String,
+    val role: String = "viewer"
+)
+
+@Serializable
+data class SharedUser(
+    val userId: String,
+    val email: String?,
+    val fullName: String?,
+    val role: String
 )
 
 @Serializable
@@ -123,6 +200,13 @@ data class PaginatedResponse<T>(
     val content: List<T>,
     val totalElements: Long,
     val totalPages: Int
+)
+
+@Serializable
+data class UpdateRecordRequest(
+    val title: String? = null,
+    val description: String? = null,
+    val category: String? = null
 )
 
 @Serializable

@@ -10,7 +10,9 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import org.jetbrains.exposed.sql.transactions.transaction
 import ru.kingofraccoons.models.Folders
 import ru.kingofraccoons.models.Records
+import ru.kingofraccoons.models.SharedRecords
 import ru.kingofraccoons.models.TranscriptionSegments
+import ru.kingofraccoons.models.UserProfiles
 
 object DatabaseFactory {
     fun init(config: Application) {
@@ -37,7 +39,7 @@ object DatabaseFactory {
         // Users table removed - using Keycloak user IDs directly
         transaction {
             @Suppress("DEPRECATION")
-            SchemaUtils.createMissingTablesAndColumns(Folders, Records, TranscriptionSegments)
+            SchemaUtils.createMissingTablesAndColumns(UserProfiles, Folders, Records, TranscriptionSegments, SharedRecords)
         }
     }
 }
