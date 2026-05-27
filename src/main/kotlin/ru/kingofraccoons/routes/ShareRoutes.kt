@@ -23,7 +23,7 @@ fun Route.shareRoutes(
     authenticate("auth-jwt") {
         apiDoc("POST", "/records/{id}/share") {
             summary = "Поделиться записью"
-            description = "Предоставляет доступ к записи другому пользователю по email"
+            description = "Предоставляет доступ к записи другому пользователю по userId или email. Приоритет отдаётся userId."
             tags = listOf("Sharing")
             parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
             parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
@@ -66,10 +66,16 @@ fun Route.shareRoutes(
                 return@post
             }
 
-            // Поиск пользователя по email через Keycloak
-            val targetUserId = keycloakService.getUserIdByEmail(request.email)
+            val targetUserId = when {
+                !request.userId.isNullOrBlank() -> request.userId
+                !request.email.isNullOrBlank() -> keycloakService.getUserIdByEmail(request.email)
+                else -> {
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Either userId or email must be provided", 400))
+                    return@post
+                }
+            }
             if (targetUserId == null) {
-                call.respond(HttpStatusCode.NotFound, ErrorResponse("User with email ${request.email} not found", 404))
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("User not found", 404))
                 return@post
             }
 

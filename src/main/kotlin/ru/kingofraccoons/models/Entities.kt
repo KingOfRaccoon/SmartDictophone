@@ -159,7 +159,8 @@ data class SharedRecord(
 
 @Serializable
 data class ShareRecordRequest(
-    val email: String,
+    val email: String? = null,
+    val userId: String? = null,
     val role: String = "viewer"
 )
 

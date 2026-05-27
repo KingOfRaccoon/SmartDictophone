@@ -651,6 +651,7 @@ paths:
   /records/{id}/share:
     post:
       summary: Поделиться записью
+      description: Предоставляет доступ к записи другому пользователю по userId или email. Приоритет отдаётся userId.
       tags:
       - Sharing
       parameters:
@@ -666,6 +667,29 @@ paths:
         required: true
         schema:
           type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  description: ID пользователя в Keycloak (приоритет)
+                email:
+                  type: string
+                  description: Email пользователя для поиска через Keycloak
+                role:
+                  type: string
+                  default: viewer
+                  enum:
+                  - owner
+                  - editor
+                  - viewer
+            example:
+              userId: keycloak-uuid
+              role: viewer
       responses:
         '200':
           description: Доступ предоставлен
