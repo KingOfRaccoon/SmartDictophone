@@ -14,6 +14,7 @@ import mu.KotlinLogging
 import ru.kingofraccoons.dao.FolderDAO
 import ru.kingofraccoons.dao.ProcessingStatusDAO
 import ru.kingofraccoons.dao.RecordDAO
+import ru.kingofraccoons.dao.SharedRecordDAO
 import ru.kingofraccoons.dao.SummaryDAO
 import ru.kingofraccoons.dao.TranscriptionDAO
 import ru.kingofraccoons.models.*
@@ -41,7 +42,8 @@ fun Route.recordRoutes(
     rabbitMQService: RabbitMQService,
     apiKey: String,
     processingStatusDAO: ProcessingStatusDAO,
-    summaryDAO: SummaryDAO
+    summaryDAO: SummaryDAO,
+    sharedRecordDAO: SharedRecordDAO
 ) {
     authenticate("auth-jwt") {
         apiDoc("GET", "/records") {
@@ -353,7 +355,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -421,7 +423,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
                     ErrorResponse("You don't have access to this record", HttpStatusCode.Forbidden.value)
@@ -613,7 +615,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
                 return@get
             }
@@ -650,7 +652,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
                 return@get
             }
@@ -695,7 +697,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
                 return@get
             }
@@ -746,7 +748,7 @@ fun Route.recordRoutes(
                 return@get
             }
 
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+            if (!record.hasAccess(keycloakUserId, folderDAO, sharedRecordDAO)) {
                 call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
                 return@get
             }
