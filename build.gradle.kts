@@ -41,6 +41,7 @@ dependencies {
     // Ktor Client for Keycloak API calls
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.java)
     implementation(libs.ktor.client.content.negotiation)
     
     // Exposed ORM
@@ -77,6 +78,7 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.ktor.client.content.negotiation)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.h2)
 
     // Testcontainers

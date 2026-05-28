@@ -37,6 +37,19 @@ class ApplicationTest {
                 put("s3.accessKey", "test")
                 put("s3.secretKey", "test")
                 put("s3.bucket", "test-bucket")
+
+                // RabbitMQ (dummy values)
+                put("rabbitmq.host", "localhost")
+                put("rabbitmq.port", "5672")
+                put("rabbitmq.username", "guest")
+                put("rabbitmq.password", "guest")
+                put("rabbitmq.queue", "test-queue")
+                put("rabbitmq.summaryQueue", "test-summary-queue")
+
+                // OpenRouter (dummy values)
+                put("openrouter.apiKey", "test-key")
+                put("openrouter.model", "test-model")
+                put("openrouter.baseUrl", "https://openrouter.ai/api/v1")
             }
         }
         application {

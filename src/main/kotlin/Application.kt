@@ -15,6 +15,7 @@ import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.request.path
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
@@ -24,9 +25,11 @@ import ru.kingofraccoons.models.ErrorResponse
 import ru.kingofraccoons.openapi.OpenApiGenerator
 import ru.kingofraccoons.routes.*
 import ru.kingofraccoons.services.KeycloakService
+import ru.kingofraccoons.services.OpenRouterService
 import ru.kingofraccoons.services.PdfService
 import ru.kingofraccoons.services.RabbitMQService
 import ru.kingofraccoons.services.S3Service
+import ru.kingofraccoons.services.SummaryService
 import java.security.KeyFactory
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.X509EncodedKeySpec
@@ -54,6 +57,12 @@ fun Application.module() {
     val transcriptionDAO = TranscriptionDAO()
     val userProfileDAO = UserProfileDAO()
     val sharedRecordDAO = SharedRecordDAO()
+    val processingStatusDAO = ProcessingStatusDAO()
+    val summaryDAO = SummaryDAO()
+
+    // Initialize summary services
+    val openRouterService = OpenRouterService(this)
+    val summaryService = SummaryService(processingStatusDAO, summaryDAO, transcriptionDAO, openRouterService)
     
     // API Key from config
     val apiKey = environment.config.config("api").property("key").getString()
@@ -257,7 +266,7 @@ fun Application.module() {
         // Application routes
         authRoutes(keycloakService)
         userRoutes(recordDAO, folderDAO, userProfileDAO, keycloakService, s3Service)
-        recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey)
+        recordRoutes(recordDAO, transcriptionDAO, folderDAO, s3Service, pdfService, rabbitMQService, apiKey, processingStatusDAO, summaryDAO)
         folderRoutes(folderDAO, recordDAO, transcriptionDAO, s3Service)
         shareRoutes(sharedRecordDAO, recordDAO, folderDAO, keycloakService)
         
@@ -276,6 +285,13 @@ fun Application.module() {
         }
     }
     
+    // Launch summary consumer
+    launch {
+        rabbitMQService.startSummaryConsumer { recordId ->
+            summaryService.summarize(recordId)
+        }
+    }
+
     // Shutdown hook
     monitor.subscribe(ApplicationStopped) {
         s3Service.close()

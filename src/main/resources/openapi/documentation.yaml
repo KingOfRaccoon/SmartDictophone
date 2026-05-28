@@ -582,6 +582,74 @@ paths:
             application/json:
               schema:
                 type: object
+  /records/{id}/summary:
+    get:
+      summary: Получить суммаризацию записи
+      tags:
+      - Records
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID записи
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Суммаризация
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Суммаризация не готова
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                type: object
+  /records/{id}/statuses:
+    get:
+      summary: Получить статусы обработки записи
+      tags:
+      - Records
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer {token}
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: ID записи
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Список статусов
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                type: object
   /records/{id}/transcribe:
     post:
       summary: Сохранить результат транскрипции
@@ -651,7 +719,6 @@ paths:
   /records/{id}/share:
     post:
       summary: Поделиться записью
-      description: Предоставляет доступ к записи другому пользователю по userId или email. Приоритет отдаётся userId.
       tags:
       - Sharing
       parameters:
@@ -667,29 +734,6 @@ paths:
         required: true
         schema:
           type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                userId:
-                  type: string
-                  description: ID пользователя в Keycloak (приоритет)
-                email:
-                  type: string
-                  description: Email пользователя для поиска через Keycloak
-                role:
-                  type: string
-                  default: viewer
-                  enum:
-                  - owner
-                  - editor
-                  - viewer
-            example:
-              userId: keycloak-uuid
-              role: viewer
       responses:
         '200':
           description: Доступ предоставлен

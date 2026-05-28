@@ -18,6 +18,11 @@ services:
       RABBITMQ_USER: rmuser
       RABBITMQ_PASSWORD: rmpassword
       RABBITMQ_QUEUE: audio-transcription
+      RABBITMQ_SUMMARY_QUEUE: summary-tasks
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: openrouter/free
+      OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      API_KEY: test-api-key
     depends_on:
       postgres:
         condition: service_healthy

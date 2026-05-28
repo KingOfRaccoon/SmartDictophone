@@ -17,8 +17,10 @@ import ru.kingofraccoons.dao.SharedRecordDAO
 import ru.kingofraccoons.dao.TranscriptionDAO
 import ru.kingofraccoons.dao.UserProfileDAO
 import ru.kingofraccoons.models.Folders
+import ru.kingofraccoons.models.ProcessingStatuses
 import ru.kingofraccoons.models.Records
 import ru.kingofraccoons.models.SharedRecords
+import ru.kingofraccoons.models.Summaries
 import ru.kingofraccoons.models.TranscriptionSegments
 import ru.kingofraccoons.models.UserProfiles
 
@@ -64,9 +66,9 @@ abstract class BaseDaoTest {
             @Suppress("DEPRECATION")
             SchemaUtils.createMissingTablesAndColumns(
                 UserProfiles, Folders, Records,
-                TranscriptionSegments, SharedRecords
+                TranscriptionSegments, SharedRecords, ProcessingStatuses, Summaries
             )
-            exec("TRUNCATE TABLE shared_records, transcription_segments, records, folders, user_profiles RESTART IDENTITY CASCADE")
+            exec("TRUNCATE TABLE shared_records, transcription_segments, records, folders, user_profiles, processing_statuses, summaries RESTART IDENTITY CASCADE")
         }
     }
 }

@@ -12,14 +12,11 @@ import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.readRemaining
 import mu.KotlinLogging
 import ru.kingofraccoons.dao.FolderDAO
+import ru.kingofraccoons.dao.ProcessingStatusDAO
 import ru.kingofraccoons.dao.RecordDAO
+import ru.kingofraccoons.dao.SummaryDAO
 import ru.kingofraccoons.dao.TranscriptionDAO
-import ru.kingofraccoons.models.ErrorResponse
-import ru.kingofraccoons.models.PaginatedResponse
-import ru.kingofraccoons.models.Record
-import ru.kingofraccoons.models.RecordCategory
-import ru.kingofraccoons.models.TranscribeRequest
-import ru.kingofraccoons.models.UpdateRecordRequest
+import ru.kingofraccoons.models.*
 import ru.kingofraccoons.openapi.ParameterLocation
 import ru.kingofraccoons.openapi.apiDoc
 import ru.kingofraccoons.services.PdfService
@@ -42,7 +39,9 @@ fun Route.recordRoutes(
     s3Service: S3Service,
     pdfService: PdfService,
     rabbitMQService: RabbitMQService,
-    apiKey: String
+    apiKey: String,
+    processingStatusDAO: ProcessingStatusDAO,
+    summaryDAO: SummaryDAO
 ) {
     authenticate("auth-jwt") {
         apiDoc("GET", "/records") {
@@ -466,51 +465,6 @@ fun Route.recordRoutes(
                 )
             }
         }
-    }
-
-        // API Key protected endpoint
-        apiDoc("GET", "/records/{id}") {
-            summary = "Получить запись по ID"
-            description = "Возвращает полную информацию об аудиозаписи по её ID"
-            tags = listOf("Records")
-
-            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
-            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
-
-            response(HttpStatusCode.OK, "Данные записи")
-            response(HttpStatusCode.BadRequest, "Неверный ID записи")
-            response(HttpStatusCode.Unauthorized, "Недействительный токен")
-            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
-            response(HttpStatusCode.NotFound, "Запись не найдена")
-        }
-
-        /**
-         * GET /records/{id} - получить одну запись по ID
-         */
-        get("/records/{id}") {
-            val principal = call.principal<JWTPrincipal>()
-                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
-
-            val keycloakUserId = principal.payload.subject
-            val recordId = call.parameters["id"]?.toLongOrNull()
-            if (recordId == null) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
-                return@get
-            }
-
-            val record = recordDAO.findById(recordId)
-            if (record == null) {
-                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
-                return@get
-            }
-
-            if (!record.belongsTo(keycloakUserId, folderDAO)) {
-                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
-                return@get
-            }
-
-            call.respond(HttpStatusCode.OK, record)
-        }
 
         apiDoc("PUT", "/records/{id}") {
             summary = "Обновить запись"
@@ -668,6 +622,157 @@ fun Route.recordRoutes(
             call.respond(HttpStatusCode.OK, segments)
         }
 
+        apiDoc("GET", "/records/{id}/summary") {
+            summary = "Получить суммаризацию записи"
+            description = "Возвращает сгенерированную суммаризацию транскрипции"
+            tags = listOf("Records")
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+            response(HttpStatusCode.OK, "Суммаризация")
+            response(HttpStatusCode.NotFound, "Суммаризация не готова")
+            response(HttpStatusCode.Forbidden, "Нет доступа")
+        }
+
+        get("/records/{id}/summary") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@get
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@get
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@get
+            }
+
+            val summary = summaryDAO.findByRecordId(recordId)
+            if (summary == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Summary not available", 404))
+                return@get
+            }
+
+            call.respond(HttpStatusCode.OK, SummaryResponse(
+                summaryText = summary.summaryText,
+                modelUsed = summary.modelUsed,
+                createdAt = summary.createdAt
+            ))
+        }
+
+        apiDoc("GET", "/records/{id}/statuses") {
+            summary = "Получить статусы обработки записи"
+            description = "Возвращает статусы всех этапов обработки (транскрипция, суммаризация)"
+            tags = listOf("Records")
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+            response(HttpStatusCode.OK, "Список статусов")
+            response(HttpStatusCode.Forbidden, "Нет доступа")
+        }
+
+        get("/records/{id}/statuses") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@get
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@get
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@get
+            }
+
+            val statuses = processingStatusDAO.findByRecordId(recordId)
+            call.respond(HttpStatusCode.OK, statuses.map {
+                ProcessingStatusResponse(
+                    stage = it.stage,
+                    status = it.status,
+                    errorMessage = it.errorMessage,
+                    updatedAt = it.updatedAt
+                )
+            })
+        }
+
+        apiDoc("GET", "/records/{id}") {
+            summary = "Получить запись по ID"
+            description = "Возвращает полную информацию об аудиозаписи по её ID"
+            tags = listOf("Records")
+
+            parameter("Authorization", "Bearer {token}", required = true, location = ParameterLocation.HEADER)
+            parameter("id", "ID записи", required = true, type = "integer", location = ParameterLocation.PATH)
+
+            response(HttpStatusCode.OK, "Данные записи")
+            response(HttpStatusCode.BadRequest, "Неверный ID записи")
+            response(HttpStatusCode.Unauthorized, "Недействительный токен")
+            response(HttpStatusCode.Forbidden, "Нет доступа к этой записи")
+            response(HttpStatusCode.NotFound, "Запись не найдена")
+        }
+
+        /**
+         * GET /records/{id} - получить одну запись по ID
+         */
+        get("/records/{id}") {
+            val principal = call.principal<JWTPrincipal>()
+                ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid token", 401))
+
+            val keycloakUserId = principal.payload.subject
+            val recordId = call.parameters["id"]?.toLongOrNull()
+            if (recordId == null) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid record ID", 400))
+                return@get
+            }
+
+            val record = recordDAO.findById(recordId)
+            if (record == null) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Record not found", 404))
+                return@get
+            }
+
+            if (!record.belongsTo(keycloakUserId, folderDAO)) {
+                call.respond(HttpStatusCode.Forbidden, ErrorResponse("You don't have access to this record", 403))
+                return@get
+            }
+
+            val summary = summaryDAO.findByRecordId(recordId)
+            val statuses = processingStatusDAO.findByRecordId(recordId)
+
+            val response = RecordWithSummaryResponse(
+                id = record.id,
+                folderId = record.folderId,
+                title = record.title,
+                description = record.description,
+                datetime = record.datetime,
+                latitude = record.latitude,
+                longitude = record.longitude,
+                duration = record.duration,
+                category = record.category,
+                audioUrl = record.audioUrl,
+                createdAt = record.createdAt,
+                updatedAt = record.updatedAt,
+                summary = summary?.let { SummaryResponse(it.summaryText, it.modelUsed, it.createdAt) },
+                statuses = statuses.map { ProcessingStatusResponse(it.stage, it.status, it.errorMessage, it.updatedAt) }
+            )
+            call.respond(HttpStatusCode.OK, response)
+        }
+
         // API Key protected endpoint
         apiDoc("POST", "/records/{id}/transcribe") {
                 summary = "Сохранить результат транскрипции"
@@ -702,6 +807,7 @@ fun Route.recordRoutes(
             response(HttpStatusCode.Unauthorized, "Неверный API ключ")
             response(HttpStatusCode.NotFound, "Запись не найдена")
         }
+    }
 
         post("/records/{id}/transcribe") {
         val providedApiKey = call.request.headers["X-API-Key"]
@@ -752,6 +858,16 @@ fun Route.recordRoutes(
             .joinToString(" ") { it.text.trim() }
             .ifBlank { null }
         recordDAO.updateDescription(recordId, fullText)
+
+        // Update transcription status and trigger summarization
+        processingStatusDAO.createOrUpdate(recordId, "transcription", "completed")
+        try {
+            processingStatusDAO.createOrUpdate(recordId, "summarization", "pending")
+            rabbitMQService.sendSummaryTask(recordId)
+        } catch (e: Exception) {
+            logger.warn(e) { "Failed to enqueue summary task for record $recordId" }
+            processingStatusDAO.createOrUpdate(recordId, "summarization", "failed", e.message)
+        }
 
         call.respond(HttpStatusCode.OK, mapOf("message" to "Transcription saved successfully"))
     }

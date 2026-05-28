@@ -3,7 +3,14 @@
     "allow": [
       "mcp__plugin_figma_figma__get_screenshot",
       "mcp__zai-mcp-server__analyze_image",
-      "mcp__plugin_figma_figma__use_figma"
+      "mcp__plugin_figma_figma__use_figma",
+      "Bash(./gradlew compileKotlin)",
+      "Bash(./gradlew test *)",
+      "Bash(./gradlew compileTestKotlin)",
+      "Bash(docker network *)",
+      "Bash(docker top *)",
+      "Bash(docker compose *)",
+      "Bash(docker restart *)"
     ]
   }
 }

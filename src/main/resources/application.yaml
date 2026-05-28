@@ -49,3 +49,11 @@ rabbitmq:
   username: ${RABBITMQ_USER:rmuser}
   password: ${RABBITMQ_PASSWORD:rmpassword}
   queue: ${RABBITMQ_QUEUE:audio-transcription}
+  summaryQueue: ${RABBITMQ_SUMMARY_QUEUE:summary-tasks}
+
+openrouter:
+  apiKey: ${OPENROUTER_API_KEY:}
+  model: ${OPENROUTER_MODEL:google/gemini-2.0-flash-exp:free}
+  baseUrl: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+  maxRetries: ${OPENROUTER_MAX_RETRIES:3}
+  retryDelayMs: ${OPENROUTER_RETRY_DELAY_MS:5000}
