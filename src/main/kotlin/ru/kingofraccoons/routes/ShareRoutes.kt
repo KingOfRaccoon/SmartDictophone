@@ -210,11 +210,11 @@ fun Route.shareRoutes(
             val sharedRecords = sharedRecordDAO.findBySharedWithUserId(keycloakUserId)
             val records = sharedRecords.mapNotNull { sr ->
                 recordDAO.findById(sr.recordId)?.let { record ->
-                    mapOf(
-                        "record" to record,
-                        "role" to sr.role,
-                        "sharedByUserId" to sr.sharedByUserId,
-                        "sharedAt" to sr.createdAt
+                    SharedRecordResponse(
+                        record = record,
+                        role = sr.role,
+                        sharedByUserId = sr.sharedByUserId,
+                        sharedAt = sr.createdAt
                     )
                 }
             }
